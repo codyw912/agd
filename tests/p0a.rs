@@ -921,6 +921,31 @@ fn doctor_reports_broken_guardrails() {
 }
 
 #[test]
+fn doctor_detects_missing_pre_push_hook() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fs::remove_file(workspace.join(".git/hooks/pre-push")).expect("remove pre-push hook");
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail pre-push hook"))
+        .stdout(predicate::str::contains("missing"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
 fn doctor_detects_incomplete_git_state() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

@@ -131,6 +131,7 @@ fn checks(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Vec<Check> 
         "remote.origin.pushurl",
         "agd-deny://push-disabled",
     ));
+    checks.push(pre_push_hook_check(&workspace.path));
     checks.push(git_state_check("human git state", &project.human_checkout));
     checks.push(git_state_check("workspace git state", &workspace.path));
     checks.push(agd_lock_check(paths, project));
@@ -224,6 +225,21 @@ fn git_lfs_status() -> &'static str {
     {
         Ok(output) if output.status.success() => "git-lfs available",
         _ => "git-lfs unavailable",
+    }
+}
+
+fn pre_push_hook_check(workspace: &Path) -> Check {
+    let hook = workspace.join(".git/hooks/pre-push");
+    if !hook.exists() {
+        return fail("pre-push hook", format!("missing {}", hook.display()));
+    }
+
+    match fs::read_to_string(&hook) {
+        Ok(contents) if contents.contains("AGD: push is disabled for this agent workspace.") => {
+            ok("pre-push hook", "")
+        }
+        Ok(_) => fail("pre-push hook", format!("stale {}", hook.display())),
+        Err(error) => fail("pre-push hook", error.to_string()),
     }
 }
 
