@@ -12,6 +12,7 @@ pub enum Command {
     Init,
     Path,
     Status,
+    Sync,
     Branches,
     Log {
         branch: Option<String>,
