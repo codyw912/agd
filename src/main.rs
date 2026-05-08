@@ -6,6 +6,7 @@ mod output;
 mod paths;
 mod project;
 mod review;
+mod sync;
 mod workspace;
 
 use anyhow::{Context, Result};
@@ -43,6 +44,11 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             output::status(&context, &cwd)?;
+        }
+        Some(Command::Sync) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            sync::sync(context.project())?;
         }
         Some(Command::Branches) => {
             let cwd = std::env::current_dir()?;

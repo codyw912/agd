@@ -34,6 +34,7 @@ impl Fixture {
         self.git(["init", "-b", "main"]);
         self.git(["config", "user.name", "Human Developer"]);
         self.git(["config", "user.email", "human@example.test"]);
+        self.git(["config", "commit.gpgsign", "false"]);
         fs::write(self.human.join("README.md"), "# test\n").expect("write readme");
         self.git(["add", "README.md"]);
         self.git(["commit", "-m", "initial"]);
@@ -70,6 +71,7 @@ impl Fixture {
         make_executable(&signer);
         let signer = signer.to_str().expect("utf-8 signer");
         self.git(["config", "gpg.format", "openpgp"]);
+        self.git(["config", "commit.gpgsign", "true"]);
         self.git(["config", "user.signingkey", "human@example.test"]);
         self.git(["config", "gpg.program", signer]);
     }
@@ -430,4 +432,134 @@ fn review_commands_default_to_current_agent_branch() {
         .assert()
         .success()
         .stdout(predicate::str::contains("current.txt"));
+}
+
+#[test]
+fn sync_fast_forwards_default_target_from_human_checkout() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+    let human_head = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+
+    fixture
+        .agd()
+        .arg("sync")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Synced main"));
+
+    let workspace_main = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+    assert_eq!(workspace_main.trim(), human_head.trim());
+}
+
+#[test]
+fn sync_does_not_touch_agent_branches() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/work"]);
+    fixture.write_file(&workspace, "agent.txt", "agent work\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
+    let agent_tip = fixture.git_stdout(&workspace, ["rev-parse", "agent/work"]);
+    fixture.git_in(&workspace, ["switch", "main"]);
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+
+    fixture
+        .agd()
+        .arg("sync")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let agent_tip_after_sync = fixture.git_stdout(&workspace, ["rev-parse", "agent/work"]);
+    assert_eq!(agent_tip_after_sync.trim(), agent_tip.trim());
+}
+
+#[test]
+fn sync_refuses_dirty_or_diverged_state() {
+    let dirty_human = Fixture::new();
+    dirty_human.init_human_repo();
+    dirty_human
+        .agd()
+        .arg("init")
+        .current_dir(&dirty_human.human)
+        .assert()
+        .success();
+    dirty_human.write_file(&dirty_human.human, "dirty.txt", "dirty human\n");
+    dirty_human
+        .agd()
+        .arg("sync")
+        .current_dir(&dirty_human.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "human checkout has uncommitted changes",
+        ));
+
+    let dirty_agent = Fixture::new();
+    dirty_agent.init_human_repo();
+    dirty_agent
+        .agd()
+        .arg("init")
+        .current_dir(&dirty_agent.human)
+        .assert()
+        .success();
+    let workspace = dirty_agent.agd_path();
+    dirty_agent.write_file(&workspace, "dirty.txt", "dirty agent\n");
+    dirty_agent
+        .agd()
+        .arg("sync")
+        .current_dir(&dirty_agent.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "agent workspace has uncommitted changes",
+        ));
+
+    let diverged = Fixture::new();
+    diverged.init_human_repo();
+    diverged
+        .agd()
+        .arg("init")
+        .current_dir(&diverged.human)
+        .assert()
+        .success();
+    let workspace = diverged.agd_path();
+    diverged.write_file(&workspace, "workspace-main.txt", "workspace main\n");
+    diverged.git_in(&workspace, ["add", "workspace-main.txt"]);
+    diverged.git_in(&workspace, ["commit", "-m", "workspace main update"]);
+    diverged.write_file(&diverged.human, "human-main.txt", "human main\n");
+    diverged.git(["add", "human-main.txt"]);
+    diverged.git(["commit", "-m", "human main update"]);
+    diverged
+        .agd()
+        .arg("sync")
+        .current_dir(&diverged.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "default target cannot be fast-forwarded",
+        ));
 }
