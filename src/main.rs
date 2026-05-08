@@ -1,4 +1,5 @@
 mod adoption;
+mod cleanup;
 mod cli;
 mod git;
 mod guardrails;
@@ -69,6 +70,16 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             review::files(context.project(), branch.as_deref(), &cwd)?;
+        }
+        Some(Command::Discard { branch }) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            cleanup::discard(context.project(), &branch)?;
+        }
+        Some(Command::ResetWorkspace) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            cleanup::reset_workspace(&paths, context.project())?;
         }
         Some(Command::Bless { branch }) => {
             let cwd = std::env::current_dir()?;

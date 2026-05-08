@@ -563,3 +563,98 @@ fn sync_refuses_dirty_or_diverged_state() {
             "default target cannot be fast-forwarded",
         ));
 }
+
+#[test]
+fn discard_deletes_clean_agent_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let human_head = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/discard-me"]);
+    fixture.write_file(&workspace, "discard.txt", "discard me\n");
+    fixture.git_in(&workspace, ["add", "discard.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "discard me"]);
+    fixture.git_in(&workspace, ["switch", "main"]);
+
+    fixture
+        .agd()
+        .args(["discard", "agent/discard-me"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Discarded agent/discard-me"));
+
+    fixture.git_fails(&workspace, ["rev-parse", "--verify", "agent/discard-me"]);
+    let human_head_after_discard = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+    assert_eq!(human_head_after_discard.trim(), human_head.trim());
+}
+
+#[test]
+fn discard_refuses_dirty_agent_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/dirty"]);
+    fixture.write_file(&workspace, "dirty.txt", "dirty work\n");
+
+    fixture
+        .agd()
+        .args(["discard", "agent/dirty"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "agent workspace has uncommitted changes",
+        ));
+
+    fixture.git_stdout(&workspace, ["rev-parse", "--verify", "agent/dirty"]);
+}
+
+#[test]
+fn reset_workspace_recreates_clean_managed_clone() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/reset-me"]);
+    fixture.write_file(&workspace, "reset.txt", "reset me\n");
+    fixture.git_in(&workspace, ["add", "reset.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "reset me"]);
+    fixture.git_in(&workspace, ["switch", "main"]);
+
+    fixture
+        .agd()
+        .arg("reset-workspace")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Reset workspace"));
+
+    assert!(workspace.join(".git").exists());
+    assert!(workspace.join(".agd/workspace.json").exists());
+    fixture.git_fails(&workspace, ["rev-parse", "--verify", "agent/reset-me"]);
+    let author = fixture.git_stdout(&workspace, ["config", "user.email"]);
+    assert_eq!(author.trim(), "agent@agd.invalid");
+    let pushurl = fixture.git_stdout(&workspace, ["remote", "get-url", "--push", "origin"]);
+    assert_eq!(pushurl.trim(), "agd-deny://push-disabled");
+}

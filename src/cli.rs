@@ -23,6 +23,10 @@ pub enum Command {
     Files {
         branch: Option<String>,
     },
+    Discard {
+        branch: String,
+    },
+    ResetWorkspace,
     Bless {
         branch: String,
     },
