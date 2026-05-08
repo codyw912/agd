@@ -364,6 +364,71 @@ fn bless_squashes_agent_branch_into_one_human_commit() {
 }
 
 #[test]
+fn bless_preserve_replays_agent_commits_with_human_signatures() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "one.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "one.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+    fixture.write_file(&workspace, "two.txt", "two\n");
+    fixture.git_in(&workspace, ["add", "two.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent two"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/refactor-auth", "--preserve"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Preserved agent/refactor-auth"));
+
+    assert_eq!(
+        fixture
+            .git_stdout(&fixture.human, ["rev-list", "--count", "HEAD"])
+            .trim(),
+        "3"
+    );
+    let history = fixture.git_stdout(
+        &fixture.human,
+        [
+            "log",
+            "-2",
+            "--reverse",
+            "--format=%an <%ae>|%cn <%ce>|%s%n%B%x1e",
+        ],
+    );
+    assert!(history.contains(
+        "Local Agent <agent@agd.invalid>|Human Developer <human@example.test>|agent one"
+    ));
+    assert!(history.contains(
+        "Local Agent <agent@agd.invalid>|Human Developer <human@example.test>|agent two"
+    ));
+    assert_eq!(history.matches("AGD-Adoption: preserve").count(), 2);
+    assert_eq!(
+        history
+            .matches("AGD-Agent-Branch: agent/refactor-auth")
+            .count(),
+        2
+    );
+
+    let commits = fixture.git_stdout(&fixture.human, ["rev-list", "-2", "HEAD"]);
+    for commit in commits.lines() {
+        let raw = fixture.git_stdout(&fixture.human, ["cat-file", "-p", commit]);
+        assert!(raw.contains("gpgsig "));
+    }
+}
+
+#[test]
 fn branches_lists_agent_branches() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

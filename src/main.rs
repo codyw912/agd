@@ -111,10 +111,15 @@ fn main() -> Result<()> {
             let context = project::discover(&paths, &cwd)?;
             cleanup::reset_workspace(&paths, context.project())?;
         }
-        Some(Command::Bless { branch }) => {
+        Some(Command::Bless { branch, preserve }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            adoption::bless_squash(&paths, context.project(), &branch)?;
+            let mode = if preserve {
+                adoption::AdoptionMode::Preserve
+            } else {
+                adoption::AdoptionMode::Squash
+            };
+            adoption::bless(&paths, context.project(), &branch, mode)?;
         }
         Some(Command::DenySigner { _args: _ }) => {
             guardrails::deny_signing(&paths)?;

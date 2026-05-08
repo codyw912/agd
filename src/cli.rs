@@ -33,6 +33,8 @@ pub enum Command {
     ResetWorkspace,
     Bless {
         branch: String,
+        #[arg(long)]
+        preserve: bool,
     },
     #[command(hide = true)]
     DenySigner {
