@@ -12,7 +12,7 @@ mod review;
 mod sync;
 mod workspace;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Parser;
 use cli::Command;
 
@@ -111,10 +111,19 @@ fn main() -> Result<()> {
             let context = project::discover(&paths, &cwd)?;
             cleanup::reset_workspace(&paths, context.project())?;
         }
-        Some(Command::Bless { branch, preserve }) => {
+        Some(Command::Bless {
+            branch,
+            preserve,
+            merge,
+        }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let mode = if preserve {
+            if preserve && merge {
+                bail!("choose only one bless adoption mode");
+            }
+            let mode = if merge {
+                adoption::AdoptionMode::Merge
+            } else if preserve {
                 adoption::AdoptionMode::Preserve
             } else {
                 adoption::AdoptionMode::Squash

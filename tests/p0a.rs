@@ -429,6 +429,67 @@ fn bless_preserve_replays_agent_commits_with_human_signatures() {
 }
 
 #[test]
+fn bless_merge_creates_signed_merge_commit_and_preserves_agent_commits() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "one.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "one.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+    fixture.write_file(&workspace, "two.txt", "two\n");
+    fixture.git_in(&workspace, ["add", "two.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent two"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/refactor-auth", "--merge"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Merged agent/refactor-auth"));
+
+    assert_eq!(
+        fixture
+            .git_stdout(&fixture.human, ["rev-list", "--count", "HEAD"])
+            .trim(),
+        "4"
+    );
+    let merge_parents = fixture.git_stdout(&fixture.human, ["rev-list", "--parents", "-1", "HEAD"]);
+    assert_eq!(merge_parents.split_whitespace().count(), 3);
+
+    let merge_raw = fixture.git_stdout(&fixture.human, ["cat-file", "-p", "HEAD"]);
+    assert!(merge_raw.contains("gpgsig "));
+    assert!(merge_raw.contains("AGD-Adoption: merge"));
+    assert!(merge_raw.contains("AGD-Agent-Branch: agent/refactor-auth"));
+
+    let agent_history = fixture.git_stdout(
+        &fixture.human,
+        [
+            "log",
+            "--first-parent",
+            "--invert-grep",
+            "--grep",
+            "Merge agent/refactor-auth",
+            "--format=%an <%ae>|%cn <%ce>|%s",
+            "HEAD^2",
+        ],
+    );
+    assert!(agent_history
+        .contains("Local Agent <agent@agd.invalid>|Local Agent <agent@agd.invalid>|agent one"));
+    assert!(agent_history
+        .contains("Local Agent <agent@agd.invalid>|Local Agent <agent@agd.invalid>|agent two"));
+}
+
+#[test]
 fn branches_lists_agent_branches() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

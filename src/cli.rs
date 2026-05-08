@@ -35,6 +35,8 @@ pub enum Command {
         branch: String,
         #[arg(long)]
         preserve: bool,
+        #[arg(long)]
+        merge: bool,
     },
     #[command(hide = true)]
     DenySigner {

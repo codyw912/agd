@@ -11,6 +11,7 @@ use uuid::Uuid;
 pub enum AdoptionMode {
     Squash,
     Preserve,
+    Merge,
 }
 
 pub fn bless(paths: &AgdPaths, project: &Project, branch: &str, mode: AdoptionMode) -> Result<()> {
@@ -18,6 +19,7 @@ pub fn bless(paths: &AgdPaths, project: &Project, branch: &str, mode: AdoptionMo
     match mode {
         AdoptionMode::Squash => bless_squash(project, &prepared),
         AdoptionMode::Preserve => bless_preserve(project, &prepared),
+        AdoptionMode::Merge => bless_merge(project, &prepared),
     }
 }
 
@@ -82,14 +84,7 @@ fn bless_squash(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<()
         ["merge", "--squash", &prepared.fetched_ref],
     )?;
 
-    let trailers = format!(
-        "AGD-Project: {}\nAGD-Workspace: {}\nAGD-Agent-Branch: {}\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\nAGD-Adoption: squash",
-        project.project_id,
-        prepared.workspace.id,
-        prepared.branch,
-        prepared.base,
-        prepared.tip
-    );
+    let trailers = trailers(project, prepared, "squash");
 
     git::run(
         &project.human_checkout,
@@ -104,6 +99,26 @@ fn bless_squash(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<()
     )?;
 
     println!("Blessed {}", prepared.branch);
+    Ok(())
+}
+
+fn bless_merge(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<()> {
+    let trailers = trailers(project, prepared, "merge");
+    git::run(
+        &project.human_checkout,
+        [
+            OsString::from("merge"),
+            OsString::from("--no-ff"),
+            OsString::from("-S"),
+            OsString::from(&prepared.fetched_ref),
+            OsString::from("-m"),
+            OsString::from(format!("Merge {}", prepared.branch)),
+            OsString::from("-m"),
+            OsString::from(trailers),
+        ],
+    )?;
+
+    println!("Merged {}", prepared.branch);
     Ok(())
 }
 
@@ -147,6 +162,18 @@ fn bless_preserve(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<
 
     println!("Preserved {}", prepared.branch);
     Ok(())
+}
+
+fn trailers(project: &Project, prepared: &PreparedAdoption<'_>, adoption: &str) -> String {
+    format!(
+        "AGD-Project: {}\nAGD-Workspace: {}\nAGD-Agent-Branch: {}\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\nAGD-Adoption: {}",
+        project.project_id,
+        prepared.workspace.id,
+        prepared.branch,
+        prepared.base,
+        prepared.tip,
+        adoption
+    )
 }
 
 fn require_clean(repo: &Path, name: &str) -> Result<()> {
