@@ -4,18 +4,23 @@ use anyhow::{Context, Result};
 use std::path::Path;
 
 pub fn branches(project: &Project) -> Result<()> {
+    for branch in branch_names(project)? {
+        println!("{branch}");
+    }
+    Ok(())
+}
+
+pub fn branch_names(project: &Project) -> Result<Vec<String>> {
     let workspace = default_workspace(project)?;
     let output = git::stdout(
         &workspace.path,
         ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
     )?;
-    for branch in output
+    Ok(output
         .lines()
         .filter(|branch| is_review_branch(project, branch))
-    {
-        println!("{branch}");
-    }
-    Ok(())
+        .map(str::to_string)
+        .collect())
 }
 
 pub fn log(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
@@ -45,6 +50,20 @@ pub fn diff(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
 }
 
 pub fn files(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
+    let files = changed_files(project, branch, cwd)?;
+    for file in files.files {
+        println!("{file}");
+    }
+    Ok(())
+}
+
+#[derive(Debug)]
+pub struct ChangedFiles {
+    pub branch: String,
+    pub files: Vec<String>,
+}
+
+pub fn changed_files(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<ChangedFiles> {
     let workspace = default_workspace(project)?;
     let branch = resolve_branch(project, branch, cwd)?;
     let output = git::stdout(
@@ -55,8 +74,10 @@ pub fn files(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> 
             &format!("{}...{branch}", project.default_target),
         ],
     )?;
-    print!("{output}");
-    Ok(())
+    Ok(ChangedFiles {
+        branch,
+        files: output.lines().map(str::to_string).collect(),
+    })
 }
 
 fn resolve_branch(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<String> {
