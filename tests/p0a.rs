@@ -1004,6 +1004,64 @@ fn doctor_detects_moved_human_checkout_path() {
 }
 
 #[test]
+fn doctor_warns_when_submodules_are_declared() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.write_file(
+        &fixture.human,
+        ".gitmodules",
+        "[submodule \"vendor/lib\"]\n\tpath = vendor/lib\n\turl = https://example.invalid/lib.git\n",
+    );
+    fixture.git(["add", ".gitmodules"]);
+    fixture.git(["commit", "-m", "declare submodule"]);
+
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("warn submodules"))
+        .stdout(predicate::str::contains(".gitmodules"));
+}
+
+#[test]
+fn doctor_warns_when_lfs_filters_are_declared() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.write_file(
+        &fixture.human,
+        ".gitattributes",
+        "*.bin filter=lfs diff=lfs merge=lfs -text\n",
+    );
+    fixture.git(["add", ".gitattributes"]);
+    fixture.git(["commit", "-m", "declare lfs filters"]);
+
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("warn Git LFS"))
+        .stdout(predicate::str::contains("filter=lfs"));
+}
+
+#[test]
 fn json_doctor_outputs_checks() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

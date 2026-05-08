@@ -3,6 +3,7 @@ use crate::paths::AgdPaths;
 use crate::project::{Project, ProjectContext};
 use anyhow::Result;
 use serde::Serialize;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
@@ -105,6 +106,8 @@ fn checks(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Vec<Check> 
         "workspace marker",
         &workspace.path.join(".agd/workspace.json"),
     ));
+    checks.push(submodule_check(project, &workspace.path));
+    checks.push(lfs_check(project, &workspace.path));
     checks.push(config_check(
         "agent identity",
         &workspace.path,
@@ -167,6 +170,60 @@ fn human_checkout_path_check(context: &ProjectContext, cwd: &Path) -> Check {
             }
         }
         Err(error) => fail("human checkout path", error.to_string()),
+    }
+}
+
+fn submodule_check(project: &Project, workspace: &Path) -> Check {
+    let locations = checkout_files(project, workspace, ".gitmodules");
+    let present: Vec<_> = locations
+        .into_iter()
+        .filter(|(_, path)| path.exists())
+        .map(|(label, path)| format!("{label} {}", path.display()))
+        .collect();
+
+    if present.is_empty() {
+        ok("submodules", "")
+    } else {
+        warn("submodules", present.join(", "))
+    }
+}
+
+fn lfs_check(project: &Project, workspace: &Path) -> Check {
+    let locations = checkout_files(project, workspace, ".gitattributes");
+    let present: Vec<_> = locations
+        .into_iter()
+        .filter_map(|(label, path)| {
+            let contents = fs::read_to_string(&path).ok()?;
+            contents
+                .contains("filter=lfs")
+                .then(|| format!("{label} {} declares filter=lfs", path.display()))
+        })
+        .collect();
+
+    if present.is_empty() {
+        ok("Git LFS", "")
+    } else {
+        warn(
+            "Git LFS",
+            format!("{}, {}", present.join(", "), git_lfs_status()),
+        )
+    }
+}
+
+fn checkout_files(project: &Project, workspace: &Path, file: &str) -> Vec<(&'static str, PathBuf)> {
+    vec![
+        ("human", project.human_checkout.join(file)),
+        ("workspace", workspace.join(file)),
+    ]
+}
+
+fn git_lfs_status() -> &'static str {
+    match std::process::Command::new("git")
+        .args(["lfs", "version"])
+        .output()
+    {
+        Ok(output) if output.status.success() => "git-lfs available",
+        _ => "git-lfs unavailable",
     }
 }
 
@@ -246,6 +303,14 @@ fn agd_lock_check(paths: &AgdPaths, project: &Project) -> Check {
 fn ok(name: &'static str, detail: impl Into<String>) -> Check {
     Check {
         status: CheckStatus::Ok,
+        name,
+        detail: detail.into(),
+    }
+}
+
+fn warn(name: &'static str, detail: impl Into<String>) -> Check {
+    Check {
+        status: CheckStatus::Warn,
         name,
         detail: detail.into(),
     }
