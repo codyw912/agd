@@ -316,3 +316,118 @@ fn bless_squashes_agent_branch_into_one_human_commit() {
         "2"
     );
 }
+
+#[test]
+fn branches_lists_agent_branches() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "agent work\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
+
+    fixture
+        .agd()
+        .arg("branches")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("agent/refactor-auth"));
+}
+
+#[test]
+fn review_commands_show_branch_changes() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+    fixture.write_file(&workspace, "agent.txt", "two\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent two"]);
+
+    fixture
+        .agd()
+        .args(["log", "agent/refactor-auth"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("agent one"))
+        .stdout(predicate::str::contains("agent two"));
+
+    fixture
+        .agd()
+        .args(["diff", "agent/refactor-auth"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("diff --git"))
+        .stdout(predicate::str::contains("agent.txt"));
+
+    fixture
+        .agd()
+        .args(["files", "agent/refactor-auth"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("agent.txt"));
+}
+
+#[test]
+fn review_commands_default_to_current_agent_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/current-branch"]);
+    fixture.write_file(&workspace, "current.txt", "current work\n");
+    fixture.git_in(&workspace, ["add", "current.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "current branch work"]);
+
+    fixture
+        .agd()
+        .arg("log")
+        .current_dir(&workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("current branch work"));
+
+    fixture
+        .agd()
+        .arg("diff")
+        .current_dir(&workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("current.txt"));
+
+    fixture
+        .agd()
+        .arg("files")
+        .current_dir(&workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("current.txt"));
+}

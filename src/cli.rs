@@ -12,6 +12,16 @@ pub enum Command {
     Init,
     Path,
     Status,
+    Branches,
+    Log {
+        branch: Option<String>,
+    },
+    Diff {
+        branch: Option<String>,
+    },
+    Files {
+        branch: Option<String>,
+    },
     Bless {
         branch: String,
     },

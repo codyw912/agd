@@ -5,6 +5,7 @@ mod guardrails;
 mod output;
 mod paths;
 mod project;
+mod review;
 mod workspace;
 
 use anyhow::{Context, Result};
@@ -42,6 +43,26 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             output::status(&context, &cwd)?;
+        }
+        Some(Command::Branches) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            review::branches(context.project())?;
+        }
+        Some(Command::Log { branch }) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            review::log(context.project(), branch.as_deref(), &cwd)?;
+        }
+        Some(Command::Diff { branch }) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            review::diff(context.project(), branch.as_deref(), &cwd)?;
+        }
+        Some(Command::Files { branch }) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            review::files(context.project(), branch.as_deref(), &cwd)?;
         }
         Some(Command::Bless { branch }) => {
             let cwd = std::env::current_dir()?;
