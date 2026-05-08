@@ -658,3 +658,89 @@ fn reset_workspace_recreates_clean_managed_clone() {
     let pushurl = fixture.git_stdout(&workspace, ["remote", "get-url", "--push", "origin"]);
     assert_eq!(pushurl.trim(), "agd-deny://push-disabled");
 }
+
+#[test]
+fn doctor_reports_healthy_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok  project metadata"))
+        .stdout(predicate::str::contains("ok  workspace exists"))
+        .stdout(predicate::str::contains("ok  workspace marker"))
+        .stdout(predicate::str::contains("ok  agent identity"))
+        .stdout(predicate::str::contains("ok  signing disabled"))
+        .stdout(predicate::str::contains("ok  deny signer"))
+        .stdout(predicate::str::contains("ok  push disabled"));
+}
+
+#[test]
+fn doctor_reports_broken_guardrails() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["config", "commit.gpgsign", "true"]);
+    fixture.git_in(&workspace, ["config", "--unset-all", "gpg.program"]);
+    fixture.git_in(
+        &workspace,
+        [
+            "remote",
+            "set-url",
+            "--push",
+            "origin",
+            fixture.human.to_str().unwrap(),
+        ],
+    );
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail signing disabled"))
+        .stdout(predicate::str::contains("fail deny signer"))
+        .stdout(predicate::str::contains("fail push disabled"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
+fn doctor_reports_missing_workspace_marker() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    fs::remove_file(workspace.join(".agd/workspace.json")).expect("remove workspace marker");
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail workspace marker"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}

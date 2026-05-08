@@ -12,6 +12,7 @@ pub enum Command {
     Init,
     Path,
     Status,
+    Doctor,
     Sync,
     Branches,
     Log {
