@@ -1,6 +1,7 @@
 mod adoption;
 mod cleanup;
 mod cli;
+mod doctor;
 mod git;
 mod guardrails;
 mod output;
@@ -45,6 +46,11 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             output::status(&context, &cwd)?;
+        }
+        Some(Command::Doctor) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            doctor::doctor(&paths, context.project())?;
         }
         Some(Command::Sync) => {
             let cwd = std::env::current_dir()?;
