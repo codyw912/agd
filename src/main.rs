@@ -57,11 +57,11 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             if json {
-                let report = doctor::report(&paths, context.project());
+                let report = doctor::report(&paths, &context, &cwd);
                 json_output::print(&report)?;
                 doctor::ensure_passed(&report)?;
             } else {
-                doctor::doctor(&paths, context.project())?;
+                doctor::doctor(&paths, &context, &cwd)?;
             }
         }
         Some(Command::Sync) => {

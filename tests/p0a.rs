@@ -978,6 +978,32 @@ fn doctor_detects_existing_agd_operation_lock() {
 }
 
 #[test]
+fn doctor_detects_moved_human_checkout_path() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let moved = fixture._tmp.path().join("moved-human");
+    fs::rename(&fixture.human, &moved).expect("move human checkout");
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&moved)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail human checkout exists"))
+        .stdout(predicate::str::contains("fail human checkout path"))
+        .stdout(predicate::str::contains("current checkout"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
 fn json_doctor_outputs_checks() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
