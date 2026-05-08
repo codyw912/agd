@@ -1,9 +1,9 @@
 use crate::git;
 use crate::paths::AgdPaths;
-use crate::project::Project;
+use crate::project::{Project, ProjectContext};
 use anyhow::Result;
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 struct Check {
@@ -32,8 +32,8 @@ pub struct DoctorCheck {
     pub detail: String,
 }
 
-pub fn doctor(paths: &AgdPaths, project: &Project) -> Result<()> {
-    let report = report(paths, project);
+pub fn doctor(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<()> {
+    let report = report(paths, context, cwd);
     for check in &report.checks {
         let status = match check.status {
             "ok" => "ok ",
@@ -51,8 +51,8 @@ pub fn doctor(paths: &AgdPaths, project: &Project) -> Result<()> {
     ensure_passed(&report)
 }
 
-pub fn report(paths: &AgdPaths, project: &Project) -> DoctorReport {
-    let checks: Vec<_> = checks(paths, project)
+pub fn report(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> DoctorReport {
+    let checks: Vec<_> = checks(paths, context, cwd)
         .into_iter()
         .map(|check| DoctorCheck {
             status: check.status.as_str(),
@@ -81,12 +81,15 @@ impl CheckStatus {
     }
 }
 
-fn checks(paths: &AgdPaths, project: &Project) -> Vec<Check> {
+fn checks(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Vec<Check> {
+    let project = context.project();
     let mut checks = Vec::new();
     checks.push(path_check(
         "project metadata",
         &paths.project_file(&project.project_id),
     ));
+    checks.push(path_check("human checkout exists", &project.human_checkout));
+    checks.push(human_checkout_path_check(context, cwd));
 
     let Some(workspace) = project
         .workspaces
@@ -139,6 +142,38 @@ fn path_check(name: &'static str, path: &Path) -> Check {
         ok(name, "")
     } else {
         fail(name, format!("missing {}", path.display()))
+    }
+}
+
+fn human_checkout_path_check(context: &ProjectContext, cwd: &Path) -> Check {
+    let ProjectContext::HumanCheckout(project) = context else {
+        return ok("human checkout path", "");
+    };
+
+    match git::stdout(cwd, ["rev-parse", "--show-toplevel"]) {
+        Ok(path) => {
+            let current_checkout = PathBuf::from(path.trim());
+            if equivalent_path(&project.human_checkout, &current_checkout) {
+                ok("human checkout path", "")
+            } else {
+                fail(
+                    "human checkout path",
+                    format!(
+                        "metadata {}, current checkout {}",
+                        project.human_checkout.display(),
+                        current_checkout.display()
+                    ),
+                )
+            }
+        }
+        Err(error) => fail("human checkout path", error.to_string()),
+    }
+}
+
+fn equivalent_path(left: &Path, right: &Path) -> bool {
+    match (left.canonicalize(), right.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => left == right,
     }
 }
 
