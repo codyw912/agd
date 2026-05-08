@@ -4,6 +4,7 @@ mod cli;
 mod doctor;
 mod git;
 mod guardrails;
+mod json_output;
 mod output;
 mod paths;
 mod project;
@@ -11,12 +12,13 @@ mod review;
 mod sync;
 mod workspace;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
 use cli::Command;
 
 fn main() -> Result<()> {
     let cli = cli::Cli::parse();
+    let json = cli.json;
     let paths = paths::AgdPaths::from_env()?;
 
     match cli.command {
@@ -35,22 +37,32 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             let project = context.project();
-            let workspace = project
-                .workspaces
-                .iter()
-                .find(|workspace| workspace.id == project.default_workspace)
-                .context("default workspace not found")?;
-            println!("{}", workspace.path.display());
+            let workspace = json_output::default_workspace(project)?;
+            if json {
+                json_output::path(workspace)?;
+            } else {
+                println!("{}", workspace.path.display());
+            }
         }
         Some(Command::Status) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            output::status(&context, &cwd)?;
+            if json {
+                json_output::status(&context, &cwd)?;
+            } else {
+                output::status(&context, &cwd)?;
+            }
         }
         Some(Command::Doctor) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            doctor::doctor(&paths, context.project())?;
+            if json {
+                let report = doctor::report(&paths, context.project());
+                json_output::print(&report)?;
+                doctor::ensure_passed(&report)?;
+            } else {
+                doctor::doctor(&paths, context.project())?;
+            }
         }
         Some(Command::Sync) => {
             let cwd = std::env::current_dir()?;
@@ -60,7 +72,11 @@ fn main() -> Result<()> {
         Some(Command::Branches) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            review::branches(context.project())?;
+            if json {
+                json_output::branches(review::branch_names(context.project())?)?;
+            } else {
+                review::branches(context.project())?;
+            }
         }
         Some(Command::Log { branch }) => {
             let cwd = std::env::current_dir()?;
@@ -75,7 +91,15 @@ fn main() -> Result<()> {
         Some(Command::Files { branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            review::files(context.project(), branch.as_deref(), &cwd)?;
+            if json {
+                json_output::files(review::changed_files(
+                    context.project(),
+                    branch.as_deref(),
+                    &cwd,
+                )?)?;
+            } else {
+                review::files(context.project(), branch.as_deref(), &cwd)?;
+            }
         }
         Some(Command::Discard { branch }) => {
             let cwd = std::env::current_dir()?;

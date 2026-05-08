@@ -2,6 +2,7 @@ use crate::git;
 use crate::paths::AgdPaths;
 use crate::project::Project;
 use anyhow::Result;
+use serde::Serialize;
 use std::path::Path;
 
 #[derive(Debug)]
@@ -18,13 +19,27 @@ enum CheckStatus {
     Fail,
 }
 
+#[derive(Debug, Serialize)]
+pub struct DoctorReport {
+    pub checks: Vec<DoctorCheck>,
+    pub failed: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DoctorCheck {
+    pub status: &'static str,
+    pub name: &'static str,
+    pub detail: String,
+}
+
 pub fn doctor(paths: &AgdPaths, project: &Project) -> Result<()> {
-    let checks = checks(paths, project);
-    for check in &checks {
+    let report = report(paths, project);
+    for check in &report.checks {
         let status = match check.status {
-            CheckStatus::Ok => "ok ",
-            CheckStatus::Warn => "warn",
-            CheckStatus::Fail => "fail",
+            "ok" => "ok ",
+            "warn" => "warn",
+            "fail" => "fail",
+            _ => unreachable!("unknown doctor check status"),
         };
         if check.detail.is_empty() {
             println!("{status} {}", check.name);
@@ -33,10 +48,37 @@ pub fn doctor(paths: &AgdPaths, project: &Project) -> Result<()> {
         }
     }
 
-    if checks.iter().any(|check| check.status == CheckStatus::Fail) {
+    ensure_passed(&report)
+}
+
+pub fn report(paths: &AgdPaths, project: &Project) -> DoctorReport {
+    let checks: Vec<_> = checks(paths, project)
+        .into_iter()
+        .map(|check| DoctorCheck {
+            status: check.status.as_str(),
+            name: check.name,
+            detail: check.detail,
+        })
+        .collect();
+    let failed = checks.iter().any(|check| check.status == "fail");
+    DoctorReport { checks, failed }
+}
+
+pub fn ensure_passed(report: &DoctorReport) -> Result<()> {
+    if report.failed {
         anyhow::bail!("doctor found failed checks");
     }
     Ok(())
+}
+
+impl CheckStatus {
+    fn as_str(&self) -> &'static str {
+        match self {
+            CheckStatus::Ok => "ok",
+            CheckStatus::Warn => "warn",
+            CheckStatus::Fail => "fail",
+        }
+    }
 }
 
 fn checks(paths: &AgdPaths, project: &Project) -> Vec<Check> {

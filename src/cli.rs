@@ -3,6 +3,9 @@ use clap::{Parser, Subcommand};
 #[derive(Debug, Parser)]
 #[command(name = "agd", about = "Agent Git Delegation")]
 pub struct Cli {
+    #[arg(long, global = true)]
+    pub json: bool,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }

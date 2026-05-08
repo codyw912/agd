@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
+use serde_json::Value;
 use std::fs;
 use std::process::Command as StdCommand;
 use tempfile::TempDir;
@@ -51,6 +52,19 @@ impl Fixture {
             .stdout
             .clone();
         std::path::PathBuf::from(String::from_utf8(output).unwrap().trim())
+    }
+
+    fn agd_json<const N: usize>(&self, args: [&str; N], cwd: &std::path::Path) -> Value {
+        let output = self
+            .agd()
+            .args(args)
+            .current_dir(cwd)
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        serde_json::from_slice(&output).expect("valid json")
     }
 
     fn write_file(&self, repo: &std::path::Path, path: &str, contents: &str) {
@@ -279,6 +293,36 @@ fn status_identifies_human_checkout_and_agent_workspace() {
 }
 
 #[test]
+fn json_path_and_status_outputs_are_machine_readable() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let workspace = workspace.to_str().expect("workspace utf-8");
+    let human_checkout = fixture.human.canonicalize().expect("canonical human");
+    let human_checkout = human_checkout.to_str().expect("human checkout utf-8");
+
+    let path = fixture.agd_json(["--json", "path"], &fixture.human);
+    assert_eq!(path["path"], workspace);
+
+    let status = fixture.agd_json(["--json", "status"], &fixture.human);
+    assert_eq!(status["mode"], "human_checkout");
+    assert_eq!(status["project"], "human");
+    assert_eq!(status["human_checkout"], human_checkout);
+    assert_eq!(status["workspace"]["path"], workspace);
+    assert_eq!(status["agent_identity"]["email"], "agent@agd.invalid");
+    assert_eq!(status["signing"], "disabled");
+    assert_eq!(status["push"], "denied");
+    assert_eq!(status["default_target"], "main");
+    assert_eq!(status["current_branch"], "main");
+}
+
+#[test]
 fn bless_squashes_agent_branch_into_one_human_commit() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -390,6 +434,34 @@ fn review_commands_show_branch_changes() {
         .assert()
         .success()
         .stdout(predicate::str::contains("agent.txt"));
+}
+
+#[test]
+fn json_branches_and_files_outputs_are_machine_readable() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "agent work\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
+
+    let branches = fixture.agd_json(["--json", "branches"], &fixture.human);
+    assert_eq!(
+        branches["branches"],
+        serde_json::json!(["agent/refactor-auth"])
+    );
+
+    let files = fixture.agd_json(["--json", "files", "agent/refactor-auth"], &fixture.human);
+    assert_eq!(files["branch"], "agent/refactor-auth");
+    assert_eq!(files["files"], serde_json::json!(["agent.txt"]));
 }
 
 #[test]
@@ -720,6 +792,46 @@ fn doctor_reports_broken_guardrails() {
         .stdout(predicate::str::contains("fail deny signer"))
         .stdout(predicate::str::contains("fail push disabled"))
         .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
+fn json_doctor_outputs_checks() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["config", "commit.gpgsign", "true"]);
+
+    let output = fixture
+        .agd()
+        .args(["--json", "doctor"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("doctor found failed checks"))
+        .get_output()
+        .stdout
+        .clone();
+    let report: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(report["failed"], true);
+
+    let checks = report["checks"].as_array().expect("checks array");
+    assert!(checks.iter().any(|check| {
+        check["name"] == "signing disabled"
+            && check["status"] == "fail"
+            && check["detail"]
+                .as_str()
+                .is_some_and(|detail| detail.contains("expected false") && detail.contains("true"))
+    }));
+    assert!(checks
+        .iter()
+        .any(|check| check["name"] == "project metadata" && check["status"] == "ok"));
 }
 
 #[test]
