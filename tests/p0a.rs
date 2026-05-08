@@ -921,6 +921,63 @@ fn doctor_reports_broken_guardrails() {
 }
 
 #[test]
+fn doctor_detects_incomplete_git_state() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fs::write(fixture.human.join(".git/MERGE_HEAD"), "deadbeef\n").expect("write MERGE_HEAD");
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail human git state"))
+        .stdout(predicate::str::contains("MERGE_HEAD"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
+fn doctor_detects_existing_agd_operation_lock() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let marker = fs::read(fixture.human.join(".git/agd/project.json")).expect("read marker");
+    let marker: Value = serde_json::from_slice(&marker).expect("parse marker");
+    let project_id = marker["project_id"].as_str().expect("project id");
+    let lock_dir = fixture
+        .agd_home
+        .join("projects")
+        .join(project_id)
+        .join("locks");
+    fs::create_dir_all(&lock_dir).expect("create lock dir");
+    fs::write(lock_dir.join("bless.lock"), "{}\n").expect("write lock");
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail AGD operation lock"))
+        .stdout(predicate::str::contains("bless.lock"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
 fn json_doctor_outputs_checks() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

@@ -125,6 +125,9 @@ fn checks(paths: &AgdPaths, project: &Project) -> Vec<Check> {
         "remote.origin.pushurl",
         "agd-deny://push-disabled",
     ));
+    checks.push(git_state_check("human git state", &project.human_checkout));
+    checks.push(git_state_check("workspace git state", &workspace.path));
+    checks.push(agd_lock_check(paths, project));
     checks.push(dirty_check("human dirty", &project.human_checkout));
     checks.push(dirty_check("workspace dirty", &workspace.path));
 
@@ -164,6 +167,44 @@ fn dirty_check(name: &'static str, repo: &Path) -> Check {
             detail: "uncommitted changes".to_string(),
         },
         Err(error) => fail(name, error.to_string()),
+    }
+}
+
+fn git_state_check(name: &'static str, repo: &Path) -> Check {
+    let states = [
+        "MERGE_HEAD",
+        "CHERRY_PICK_HEAD",
+        "REBASE_HEAD",
+        "rebase-merge",
+        "rebase-apply",
+        "index.lock",
+    ];
+    let present: Vec<_> = states
+        .iter()
+        .filter_map(|state| {
+            git::stdout(repo, ["rev-parse", "--git-path", state])
+                .ok()
+                .map(|path| repo.join(path.trim()))
+                .filter(|path| path.exists())
+                .map(|_| *state)
+        })
+        .collect();
+
+    if present.is_empty() {
+        ok(name, "")
+    } else {
+        fail(name, present.join(", "))
+    }
+}
+
+fn agd_lock_check(paths: &AgdPaths, project: &Project) -> Check {
+    let lock = paths
+        .project_dir(&project.project_id)
+        .join("locks/bless.lock");
+    if lock.exists() {
+        fail("AGD operation lock", lock.display().to_string())
+    } else {
+        ok("AGD operation lock", "")
     }
 }
 
