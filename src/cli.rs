@@ -35,11 +35,13 @@ pub enum Command {
     },
     ResetWorkspace,
     Bless {
-        branch: String,
+        branch: Option<String>,
         #[arg(long)]
         preserve: bool,
         #[arg(long)]
         merge: bool,
+        #[arg(long)]
+        abort: bool,
     },
     #[command(hide = true)]
     DenySigner {

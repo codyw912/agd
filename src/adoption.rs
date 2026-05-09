@@ -21,6 +21,12 @@ pub fn bless(paths: &AgdPaths, project: &Project, branch: &str, mode: AdoptionMo
     }
 }
 
+pub fn abort(project: &Project) -> Result<()> {
+    git::run(&project.human_checkout, ["reset", "--merge"])?;
+    println!("Aborted bless operation");
+    Ok(())
+}
+
 struct PreparedAdoption<'a> {
     workspace: &'a crate::project::Workspace,
     branch: &'a str,
@@ -76,10 +82,14 @@ fn prepare<'a>(
 }
 
 fn bless_squash(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<()> {
-    git::run(
+    if let Err(error) = git::run(
         &project.human_checkout,
         ["merge", "--squash", &prepared.fetched_ref],
-    )?;
+    ) {
+        anyhow::bail!(
+            "bless squash failed: {error}\nrun `agd bless --abort` to restore the human checkout"
+        );
+    }
 
     let trailers = trailers(project, prepared, "squash");
 
