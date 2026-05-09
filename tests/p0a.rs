@@ -1068,6 +1068,34 @@ fn doctor_detects_missing_pre_push_hook() {
 }
 
 #[test]
+fn doctor_detects_workspace_object_alternates() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    let alternates = workspace.join(".git/objects/info/alternates");
+    fs::create_dir_all(alternates.parent().expect("alternates parent"))
+        .expect("create alternates parent");
+    fs::write(&alternates, "/tmp/shared-objects\n").expect("write alternates");
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail workspace independence"))
+        .stdout(predicate::str::contains("alternates"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
 fn doctor_repair_recreates_missing_workspace_marker() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

@@ -196,6 +196,7 @@ fn checks(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Vec<Check> 
 
     checks.push(path_check("workspace exists", &workspace.path));
     checks.push(workspace_marker_check(project, workspace));
+    checks.push(workspace_independence_check(&workspace.path));
     checks.push(workspace_origin_check(project, &workspace.path));
     checks.push(submodule_check(project, &workspace.path));
     checks.push(lfs_check(project, &workspace.path));
@@ -309,6 +310,27 @@ fn workspace_marker_check(project: &Project, workspace: &project::Workspace) -> 
     }
 
     ok("workspace marker", "")
+}
+
+fn workspace_independence_check(workspace: &Path) -> Check {
+    let alternates = match git::stdout(
+        workspace,
+        ["rev-parse", "--git-path", "objects/info/alternates"],
+    ) {
+        Ok(path) => workspace.join(path.trim()),
+        Err(error) => return fail("workspace independence", error.to_string()),
+    };
+    match fs::read_to_string(&alternates) {
+        Ok(contents) if contents.trim().is_empty() => ok("workspace independence", ""),
+        Ok(_) => fail(
+            "workspace independence",
+            format!("alternates {}", alternates.display()),
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            ok("workspace independence", "")
+        }
+        Err(error) => fail("workspace independence", error.to_string()),
+    }
 }
 
 fn workspace_origin_check(project: &Project, workspace: &Path) -> Check {
