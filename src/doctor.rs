@@ -1,4 +1,5 @@
 use crate::git;
+use crate::guardrails;
 use crate::paths::AgdPaths;
 use crate::project::{self, Project, ProjectContext};
 use anyhow::{Context, Result};
@@ -112,6 +113,8 @@ pub fn repair(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<
             workspace.id,
             current_checkout.display()
         );
+        guardrails::install(paths, &workspace.path)?;
+        println!("Repaired workspace guardrails for {}", workspace.id);
         repaired = true;
     }
 
