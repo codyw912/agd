@@ -1,8 +1,9 @@
 use crate::git;
 use crate::paths::AgdPaths;
-use crate::project::{Project, ProjectContext};
-use anyhow::Result;
+use crate::project::{self, Project, ProjectContext};
+use anyhow::{Context, Result};
 use serde::Serialize;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -69,6 +70,57 @@ pub fn ensure_passed(report: &DoctorReport) -> Result<()> {
     if report.failed {
         anyhow::bail!("doctor found failed checks");
     }
+    Ok(())
+}
+
+pub fn repair(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<()> {
+    let ProjectContext::HumanCheckout(project) = context else {
+        anyhow::bail!("doctor --repair must be run from the human checkout");
+    };
+
+    let current_checkout = git::stdout(cwd, ["rev-parse", "--show-toplevel"])?;
+    let current_checkout = PathBuf::from(current_checkout.trim())
+        .canonicalize()
+        .context("canonicalize current checkout")?;
+    let mut project = project.clone();
+    let mut repaired = false;
+
+    if !equivalent_path(&project.human_checkout, &current_checkout) {
+        project.human_checkout = current_checkout.clone();
+        println!(
+            "Repaired human checkout path: {}",
+            current_checkout.display()
+        );
+        repaired = true;
+    }
+
+    for workspace in &project.workspaces {
+        if !workspace.path.exists() {
+            continue;
+        }
+        git::run(
+            &workspace.path,
+            [
+                OsString::from("remote"),
+                OsString::from("set-url"),
+                OsString::from("origin"),
+                current_checkout.as_os_str().to_owned(),
+            ],
+        )?;
+        println!(
+            "Repaired workspace origin for {}: {}",
+            workspace.id,
+            current_checkout.display()
+        );
+        repaired = true;
+    }
+
+    if repaired {
+        project::save_project(paths, &project)?;
+    } else {
+        println!("No repairs needed");
+    }
+
     Ok(())
 }
 

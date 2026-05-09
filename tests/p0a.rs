@@ -1148,6 +1148,57 @@ fn doctor_detects_moved_human_checkout_path() {
 }
 
 #[test]
+fn doctor_repair_fixes_moved_human_checkout_path() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let project_id = fixture.project_id();
+
+    let moved = fixture._tmp.path().join("moved-human");
+    fs::rename(&fixture.human, &moved).expect("move human checkout");
+    let moved = moved.canonicalize().expect("canonical moved checkout");
+    let moved_str = moved.to_str().expect("moved checkout utf-8");
+
+    fixture
+        .agd()
+        .args(["doctor", "--repair"])
+        .current_dir(&moved)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Repaired human checkout path"));
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&moved)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok  human checkout path"));
+
+    let project = fs::read(
+        fixture
+            .agd_home
+            .join("projects")
+            .join(project_id)
+            .join("project.json"),
+    )
+    .expect("read project metadata");
+    let project: Value = serde_json::from_slice(&project).expect("parse project metadata");
+    assert_eq!(project["human_checkout"], moved_str);
+
+    let origin = fixture.git_stdout(&workspace, ["remote", "get-url", "origin"]);
+    assert_eq!(origin.trim(), moved_str);
+    let pushurl = fixture.git_stdout(&workspace, ["remote", "get-url", "--push", "origin"]);
+    assert_eq!(pushurl.trim(), "agd-deny://push-disabled");
+}
+
+#[test]
 fn doctor_warns_when_submodules_are_declared() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

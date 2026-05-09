@@ -15,7 +15,10 @@ pub enum Command {
     Init,
     Path,
     Status,
-    Doctor,
+    Doctor {
+        #[arg(long)]
+        repair: bool,
+    },
     Sync,
     Branches,
     Log {
