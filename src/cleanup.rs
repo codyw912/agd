@@ -1,4 +1,5 @@
 use crate::git;
+use crate::operation_lock::OperationLock;
 use crate::paths::AgdPaths;
 use crate::project::{self, Project};
 use crate::workspace;
@@ -6,12 +7,13 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
-pub fn discard(project: &Project, branch: &str) -> Result<()> {
+pub fn discard(paths: &AgdPaths, project: &Project, branch: &str) -> Result<()> {
     let workspace = default_workspace(project)?;
     require_clean(&workspace.path, "agent workspace")?;
     if branch == project.default_target {
         anyhow::bail!("refusing to discard default target");
     }
+    let _lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "discard")?;
     git::run(&workspace.path, ["branch", "-D", branch])?;
     println!("Discarded {branch}");
     Ok(())
@@ -22,6 +24,8 @@ pub fn reset_workspace(paths: &AgdPaths, project: &Project) -> Result<()> {
     let workspace = default_workspace(&project)?;
     require_clean(&workspace.path, "agent workspace")?;
     let workspace_path = workspace.path.clone();
+    let _lock =
+        OperationLock::acquire(paths, &project.project_id, &workspace.id, "reset-workspace")?;
 
     fs::remove_dir_all(&workspace_path)
         .with_context(|| format!("remove {}", workspace_path.display()))?;

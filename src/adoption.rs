@@ -1,12 +1,10 @@
 use crate::git;
+use crate::operation_lock::OperationLock;
 use crate::paths::AgdPaths;
 use crate::project::Project;
 use anyhow::{Context, Result};
 use std::ffi::OsString;
-use std::fs;
-use std::io::{ErrorKind, Write};
-use std::path::{Path, PathBuf};
-use uuid::Uuid;
+use std::path::Path;
 
 pub enum AdoptionMode {
     Squash,
@@ -29,7 +27,7 @@ struct PreparedAdoption<'a> {
     fetched_ref: String,
     base: String,
     tip: String,
-    _lock: AdoptionLock,
+    _lock: OperationLock,
 }
 
 fn prepare<'a>(
@@ -46,9 +44,8 @@ fn prepare<'a>(
     require_clean(&project.human_checkout, "human checkout")?;
     require_clean(&workspace.path, "agent workspace")?;
 
-    let operation_id = format!("op_{}", Uuid::new_v4().simple());
-    let _lock = AdoptionLock::acquire(paths, &project.project_id, &workspace.id, &operation_id)?;
-    let safety_ref = format!("refs/agd/safety/{operation_id}");
+    let lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "bless")?;
+    let safety_ref = format!("refs/agd/safety/{}", lock.operation_id());
     git::run(&project.human_checkout, ["update-ref", &safety_ref, "HEAD"])?;
 
     let fetched_ref = format!("refs/agd/agent/{branch}");
@@ -74,7 +71,7 @@ fn prepare<'a>(
         fetched_ref,
         base: base.trim().to_string(),
         tip: tip.trim().to_string(),
-        _lock,
+        _lock: lock,
     })
 }
 
@@ -182,55 +179,4 @@ fn require_clean(repo: &Path, name: &str) -> Result<()> {
         anyhow::bail!("{name} has uncommitted changes");
     }
     Ok(())
-}
-
-struct AdoptionLock {
-    path: PathBuf,
-}
-
-impl AdoptionLock {
-    fn acquire(
-        paths: &AgdPaths,
-        project_id: &str,
-        workspace_id: &str,
-        operation_id: &str,
-    ) -> Result<Self> {
-        let lock_dir = paths.project_dir(project_id).join("locks");
-        fs::create_dir_all(&lock_dir).with_context(|| format!("create {}", lock_dir.display()))?;
-        let path = lock_dir.join("bless.lock");
-        let started_at = time::OffsetDateTime::now_utc()
-            .format(&time::format_description::well_known::Rfc3339)
-            .context("format lock timestamp")?;
-        let lock = serde_json::json!({
-            "operation_id": operation_id,
-            "operation": "bless",
-            "project_id": project_id,
-            "workspace_id": workspace_id,
-            "pid": std::process::id(),
-            "started_at": started_at,
-        });
-        let mut lock_file = match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
-            Ok(lock_file) => lock_file,
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
-                anyhow::bail!("bless operation already in progress: {}", path.display());
-            }
-            Err(error) => {
-                return Err(error).with_context(|| format!("create lock {}", path.display()));
-            }
-        };
-        lock_file
-            .write_all(serde_json::to_string_pretty(&lock)?.as_bytes())
-            .with_context(|| format!("write lock {}", path.display()))?;
-        Ok(Self { path })
-    }
-}
-
-impl Drop for AdoptionLock {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-    }
 }

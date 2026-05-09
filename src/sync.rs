@@ -1,10 +1,12 @@
 use crate::git;
+use crate::operation_lock::OperationLock;
+use crate::paths::AgdPaths;
 use crate::project::Project;
 use anyhow::{Context, Result};
 use std::ffi::OsString;
 use std::path::Path;
 
-pub fn sync(project: &Project) -> Result<()> {
+pub fn sync(paths: &AgdPaths, project: &Project) -> Result<()> {
     let workspace = project
         .workspaces
         .iter()
@@ -14,6 +16,7 @@ pub fn sync(project: &Project) -> Result<()> {
 
     require_clean(&project.human_checkout, "human checkout")?;
     require_clean(&workspace.path, "agent workspace")?;
+    let _lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "sync")?;
 
     let fetch_spec = format!("refs/heads/{target}:refs/remotes/origin/{target}");
     git::run(
