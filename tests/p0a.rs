@@ -1068,6 +1068,60 @@ fn doctor_detects_missing_pre_push_hook() {
 }
 
 #[test]
+fn doctor_repair_recreates_missing_workspace_marker() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let marker_path = workspace.join(".agd/workspace.json");
+    fs::remove_file(&marker_path).expect("remove workspace marker");
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail workspace marker"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+
+    fixture
+        .agd()
+        .args(["doctor", "--repair"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Repaired workspace marker"));
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok  workspace marker"));
+
+    let marker = fs::read(&marker_path).expect("read workspace marker");
+    let marker: Value = serde_json::from_slice(&marker).expect("parse workspace marker");
+    assert_eq!(marker["kind"], "agd-workspace");
+    assert_eq!(marker["project_id"], fixture.project_id());
+    assert_eq!(marker["workspace_id"], "default");
+    let human_checkout = fixture
+        .human
+        .canonicalize()
+        .expect("canonical human checkout");
+    assert_eq!(
+        marker["human_checkout"],
+        human_checkout.to_str().expect("human checkout utf-8")
+    );
+}
+
+#[test]
 fn doctor_detects_incomplete_git_state() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

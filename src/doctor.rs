@@ -2,6 +2,7 @@ use crate::git;
 use crate::guardrails;
 use crate::paths::AgdPaths;
 use crate::project::{self, Project, ProjectContext};
+use crate::workspace;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::ffi::OsString;
@@ -115,6 +116,8 @@ pub fn repair(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<
         );
         guardrails::install(paths, &workspace.path)?;
         println!("Repaired workspace guardrails for {}", workspace.id);
+        workspace::repair_workspace_marker(&project, workspace)?;
+        println!("Repaired workspace marker for {}", workspace.id);
         repaired = true;
     }
 
