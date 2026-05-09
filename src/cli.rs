@@ -40,6 +40,8 @@ pub enum Command {
         preserve: bool,
         #[arg(long)]
         merge: bool,
+        #[arg(long = "continue")]
+        r#continue: bool,
         #[arg(long)]
         abort: bool,
     },

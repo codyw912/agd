@@ -121,10 +121,18 @@ fn main() -> Result<()> {
             branch,
             preserve,
             merge,
+            r#continue,
             abort,
         }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
+            if r#continue {
+                if abort || branch.is_some() || preserve || merge {
+                    bail!("bless --continue cannot be combined with other bless options");
+                }
+                adoption::continue_bless(&paths, context.project())?;
+                return Ok(());
+            }
             if abort {
                 if branch.is_some() || preserve || merge {
                     bail!("bless --abort cannot be combined with branch adoption options");

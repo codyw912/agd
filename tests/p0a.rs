@@ -451,6 +451,8 @@ fn bless_abort_restores_human_checkout_after_squash_conflict() {
 
     let conflicted_status = fixture.git_stdout(&fixture.human, ["status", "--porcelain"]);
     assert!(conflicted_status.contains("UU README.md"));
+    let bless_state = fixture.human.join(".git/agd/bless.json");
+    assert!(bless_state.exists());
 
     fixture
         .agd()
@@ -466,6 +468,62 @@ fn bless_abort_restores_human_checkout_after_squash_conflict() {
     assert_eq!(head_after_abort.trim(), human_head.trim());
     let readme = fs::read_to_string(fixture.human.join("README.md")).expect("read README");
     assert_eq!(readme, "human change\n");
+    assert!(!bless_state.exists());
+}
+
+#[test]
+fn bless_continue_commits_resolved_squash_conflict() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/conflict"]);
+    fixture.write_file(&workspace, "README.md", "agent change\n");
+    fixture.git_in(&workspace, ["add", "README.md"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent conflict"]);
+
+    fixture.write_file(&fixture.human, "README.md", "human change\n");
+    fixture.git(["add", "README.md"]);
+    fixture.git(["commit", "-m", "human conflict"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/conflict"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agd bless --continue"));
+    let bless_state = fixture.human.join(".git/agd/bless.json");
+    assert!(bless_state.exists());
+
+    fixture.write_file(&fixture.human, "README.md", "resolved change\n");
+    fixture.git(["add", "README.md"]);
+
+    fixture
+        .agd()
+        .args(["bless", "--continue"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Continued bless operation"));
+
+    let status = fixture.git_stdout(&fixture.human, ["status", "--porcelain"]);
+    assert!(status.trim().is_empty());
+    let subject = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%s"]);
+    assert!(subject.contains("Adopt agent/conflict"));
+    let body = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%B"]);
+    assert!(body.contains("AGD-Agent-Branch: agent/conflict"));
+    assert!(body.contains("AGD-Adoption: squash"));
+    let readme = fs::read_to_string(fixture.human.join("README.md")).expect("read README");
+    assert_eq!(readme, "resolved change\n");
+    assert!(!bless_state.exists());
 }
 
 #[test]
