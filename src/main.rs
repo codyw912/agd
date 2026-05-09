@@ -53,10 +53,15 @@ fn main() -> Result<()> {
                 output::status(&context, &cwd)?;
             }
         }
-        Some(Command::Doctor) => {
+        Some(Command::Doctor { repair }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            if json {
+            if repair {
+                if json {
+                    bail!("doctor --repair does not support --json");
+                }
+                doctor::repair(&paths, &context, &cwd)?;
+            } else if json {
                 let report = doctor::report(&paths, &context, &cwd);
                 json_output::print(&report)?;
                 doctor::ensure_passed(&report)?;
