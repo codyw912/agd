@@ -5,6 +5,7 @@ use crate::project::{self, Project, ProjectContext};
 use crate::workspace;
 use anyhow::{Context, Result};
 use serde::Serialize;
+use serde_json::Value;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -121,6 +122,10 @@ pub fn repair(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<
         repaired = true;
     }
 
+    if repair_stale_agd_lock(paths, &project)? {
+        repaired = true;
+    }
+
     if repaired {
         project::save_project(paths, &project)?;
     } else {
@@ -128,6 +133,36 @@ pub fn repair(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<
     }
 
     Ok(())
+}
+
+fn repair_stale_agd_lock(paths: &AgdPaths, project: &Project) -> Result<bool> {
+    let lock = paths
+        .project_dir(&project.project_id)
+        .join("locks/bless.lock");
+    if !lock.exists() {
+        return Ok(false);
+    }
+
+    let contents = fs::read(&lock).with_context(|| format!("read {}", lock.display()))?;
+    let metadata: Value =
+        serde_json::from_slice(&contents).with_context(|| format!("parse {}", lock.display()))?;
+    let Some(pid) = metadata["pid"].as_u64() else {
+        return Ok(false);
+    };
+    if pid_is_alive(pid) {
+        return Ok(false);
+    }
+
+    fs::remove_file(&lock).with_context(|| format!("remove {}", lock.display()))?;
+    println!("Removed stale AGD operation lock: {}", lock.display());
+    Ok(true)
+}
+
+fn pid_is_alive(pid: u64) -> bool {
+    std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 impl CheckStatus {
