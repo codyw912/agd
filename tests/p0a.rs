@@ -67,6 +67,15 @@ impl Fixture {
         serde_json::from_slice(&output).expect("valid json")
     }
 
+    fn project_id(&self) -> String {
+        let marker = fs::read(self.human.join(".git/agd/project.json")).expect("read marker");
+        let marker: Value = serde_json::from_slice(&marker).expect("parse marker");
+        marker["project_id"]
+            .as_str()
+            .expect("project id")
+            .to_string()
+    }
+
     fn write_file(&self, repo: &std::path::Path, path: &str, contents: &str) {
         let path = repo.join(path);
         if let Some(parent) = path.parent() {
@@ -487,6 +496,51 @@ fn bless_merge_creates_signed_merge_commit_and_preserves_agent_commits() {
         .contains("Local Agent <agent@agd.invalid>|Local Agent <agent@agd.invalid>|agent one"));
     assert!(agent_history
         .contains("Local Agent <agent@agd.invalid>|Local Agent <agent@agd.invalid>|agent two"));
+}
+
+#[test]
+fn bless_refuses_existing_operation_lock() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "agent work\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
+
+    let lock_dir = fixture
+        .agd_home
+        .join("projects")
+        .join(fixture.project_id())
+        .join("locks");
+    fs::create_dir_all(&lock_dir).expect("create lock dir");
+    fs::write(lock_dir.join("bless.lock"), "{}\n").expect("write lock");
+
+    fixture
+        .agd()
+        .args(["bless", "agent/refactor-auth"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "bless operation already in progress",
+        ))
+        .stderr(predicate::str::contains("bless.lock"));
+
+    assert_eq!(
+        fixture
+            .git_stdout(&fixture.human, ["rev-list", "--count", "HEAD"])
+            .trim(),
+        "1"
+    );
 }
 
 #[test]
@@ -980,13 +1034,10 @@ fn doctor_detects_existing_agd_operation_lock() {
         .assert()
         .success();
 
-    let marker = fs::read(fixture.human.join(".git/agd/project.json")).expect("read marker");
-    let marker: Value = serde_json::from_slice(&marker).expect("parse marker");
-    let project_id = marker["project_id"].as_str().expect("project id");
     let lock_dir = fixture
         .agd_home
         .join("projects")
-        .join(project_id)
+        .join(fixture.project_id())
         .join("locks");
     fs::create_dir_all(&lock_dir).expect("create lock dir");
     fs::write(lock_dir.join("bless.lock"), "{}\n").expect("write lock");

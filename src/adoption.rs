@@ -4,7 +4,7 @@ use crate::project::Project;
 use anyhow::{Context, Result};
 use std::ffi::OsString;
 use std::fs;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -198,11 +198,20 @@ impl AdoptionLock {
             "operation": "bless",
             "project_id": project_id,
         });
-        fs::OpenOptions::new()
+        let mut lock_file = match fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&path)
-            .with_context(|| format!("create lock {}", path.display()))?
+        {
+            Ok(lock_file) => lock_file,
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                anyhow::bail!("bless operation already in progress: {}", path.display());
+            }
+            Err(error) => {
+                return Err(error).with_context(|| format!("create lock {}", path.display()));
+            }
+        };
+        lock_file
             .write_all(serde_json::to_string_pretty(&lock)?.as_bytes())
             .with_context(|| format!("write lock {}", path.display()))?;
         Ok(Self { path })
