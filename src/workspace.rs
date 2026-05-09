@@ -64,6 +64,10 @@ pub fn ensure_default_workspace(paths: &AgdPaths, project: &mut Project) -> Resu
     Ok(workspace_path)
 }
 
+pub fn repair_workspace_marker(project: &Project, workspace: &Workspace) -> Result<()> {
+    write_workspace_marker(project, &workspace.path, &workspace.created_at)
+}
+
 fn default_workspace_path(paths: &AgdPaths, project: &Project) -> PathBuf {
     paths
         .home
