@@ -76,6 +76,37 @@ impl Fixture {
             .to_string()
     }
 
+    fn lock_dir(&self) -> std::path::PathBuf {
+        self.agd_home
+            .join("projects")
+            .join(self.project_id())
+            .join("locks")
+    }
+
+    fn write_operation_lock(&self, operation: &str) -> std::path::PathBuf {
+        let lock_dir = self.lock_dir();
+        fs::create_dir_all(&lock_dir).expect("create lock dir");
+        let lock_path = lock_dir.join(format!("{operation}.lock"));
+        fs::write(
+            &lock_path,
+            format!(
+                r#"{{
+  "operation_id": "op_existing",
+  "operation": "{operation}",
+  "project_id": "{}",
+  "workspace_id": "default",
+  "pid": {},
+  "started_at": "2026-05-09T00:00:00Z"
+}}
+"#,
+                self.project_id(),
+                std::process::id()
+            ),
+        )
+        .expect("write operation lock");
+        lock_path
+    }
+
     fn write_file(&self, repo: &std::path::Path, path: &str, contents: &str) {
         let path = repo.join(path);
         if let Some(parent) = path.parent() {
@@ -882,6 +913,95 @@ fn sync_refuses_dirty_or_diverged_state() {
         .stderr(predicate::str::contains(
             "default target cannot be fast-forwarded",
         ));
+}
+
+#[test]
+fn operation_locks_block_mutating_commands() {
+    let sync_locked = Fixture::new();
+    sync_locked.init_human_repo();
+    sync_locked
+        .agd()
+        .arg("init")
+        .current_dir(&sync_locked.human)
+        .assert()
+        .success();
+    let sync_lock = sync_locked.write_operation_lock("sync");
+    sync_locked
+        .agd()
+        .arg("sync")
+        .current_dir(&sync_locked.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("operation already in progress"))
+        .stderr(predicate::str::contains("sync.lock"));
+    assert!(sync_lock.exists());
+
+    let discard_locked = Fixture::new();
+    discard_locked.init_human_repo();
+    discard_locked
+        .agd()
+        .arg("init")
+        .current_dir(&discard_locked.human)
+        .assert()
+        .success();
+    let discard_workspace = discard_locked.agd_path();
+    discard_locked.git_in(&discard_workspace, ["switch", "-c", "agent/discard-locked"]);
+    discard_locked.write_file(&discard_workspace, "discard.txt", "discard locked\n");
+    discard_locked.git_in(&discard_workspace, ["add", "discard.txt"]);
+    discard_locked.git_in(&discard_workspace, ["commit", "-m", "discard locked"]);
+    discard_locked.git_in(&discard_workspace, ["switch", "main"]);
+    discard_locked.write_operation_lock("discard");
+    discard_locked
+        .agd()
+        .args(["discard", "agent/discard-locked"])
+        .current_dir(&discard_locked.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("operation already in progress"))
+        .stderr(predicate::str::contains("discard.lock"));
+    discard_locked.git_stdout(
+        &discard_workspace,
+        ["rev-parse", "--verify", "agent/discard-locked"],
+    );
+
+    let reset_locked = Fixture::new();
+    reset_locked.init_human_repo();
+    reset_locked
+        .agd()
+        .arg("init")
+        .current_dir(&reset_locked.human)
+        .assert()
+        .success();
+    let reset_workspace = reset_locked.agd_path();
+    reset_locked.write_operation_lock("reset-workspace");
+    reset_locked
+        .agd()
+        .arg("reset-workspace")
+        .current_dir(&reset_locked.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("operation already in progress"))
+        .stderr(predicate::str::contains("reset-workspace.lock"));
+    assert!(reset_workspace.join(".git").exists());
+
+    let doctor_locked = Fixture::new();
+    doctor_locked.init_human_repo();
+    doctor_locked
+        .agd()
+        .arg("init")
+        .current_dir(&doctor_locked.human)
+        .assert()
+        .success();
+    doctor_locked.write_operation_lock("sync");
+    doctor_locked
+        .agd()
+        .arg("doctor")
+        .current_dir(&doctor_locked.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail AGD operation lock"))
+        .stdout(predicate::str::contains("sync.lock"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
 }
 
 #[test]

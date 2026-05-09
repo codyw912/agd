@@ -1,5 +1,6 @@
 use crate::git;
 use crate::guardrails;
+use crate::operation_lock::{self, OperationLock};
 use crate::paths::AgdPaths;
 use crate::project::{self, Project, ProjectContext};
 use crate::workspace;
@@ -86,7 +87,13 @@ pub fn repair(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<
         .canonicalize()
         .context("canonicalize current checkout")?;
     let mut project = project.clone();
-    let mut repaired = false;
+    let mut repaired = repair_stale_agd_locks(paths, &project)?;
+    let _lock = OperationLock::acquire(
+        paths,
+        &project.project_id,
+        &project.default_workspace,
+        "repair",
+    )?;
 
     if !equivalent_path(&project.human_checkout, &current_checkout) {
         project.human_checkout = current_checkout.clone();
@@ -122,10 +129,6 @@ pub fn repair(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<
         repaired = true;
     }
 
-    if repair_stale_agd_lock(paths, &project)? {
-        repaired = true;
-    }
-
     if repaired {
         project::save_project(paths, &project)?;
     } else {
@@ -135,27 +138,24 @@ pub fn repair(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<
     Ok(())
 }
 
-fn repair_stale_agd_lock(paths: &AgdPaths, project: &Project) -> Result<bool> {
-    let lock = paths
-        .project_dir(&project.project_id)
-        .join("locks/bless.lock");
-    if !lock.exists() {
-        return Ok(false);
-    }
+fn repair_stale_agd_locks(paths: &AgdPaths, project: &Project) -> Result<bool> {
+    let mut repaired = false;
+    for lock in operation_lock::lock_paths(paths, &project.project_id)? {
+        let contents = fs::read(&lock).with_context(|| format!("read {}", lock.display()))?;
+        let metadata: Value = serde_json::from_slice(&contents)
+            .with_context(|| format!("parse {}", lock.display()))?;
+        let Some(pid) = metadata["pid"].as_u64() else {
+            continue;
+        };
+        if pid_is_alive(pid) {
+            continue;
+        }
 
-    let contents = fs::read(&lock).with_context(|| format!("read {}", lock.display()))?;
-    let metadata: Value =
-        serde_json::from_slice(&contents).with_context(|| format!("parse {}", lock.display()))?;
-    let Some(pid) = metadata["pid"].as_u64() else {
-        return Ok(false);
-    };
-    if pid_is_alive(pid) {
-        return Ok(false);
+        fs::remove_file(&lock).with_context(|| format!("remove {}", lock.display()))?;
+        println!("Removed stale AGD operation lock: {}", lock.display());
+        repaired = true;
     }
-
-    fs::remove_file(&lock).with_context(|| format!("remove {}", lock.display()))?;
-    println!("Removed stale AGD operation lock: {}", lock.display());
-    Ok(true)
+    Ok(repaired)
 }
 
 fn pid_is_alive(pid: u64) -> bool {
@@ -514,13 +514,17 @@ fn git_state_check(name: &'static str, repo: &Path) -> Check {
 }
 
 fn agd_lock_check(paths: &AgdPaths, project: &Project) -> Check {
-    let lock = paths
-        .project_dir(&project.project_id)
-        .join("locks/bless.lock");
-    if lock.exists() {
-        fail("AGD operation lock", lock.display().to_string())
-    } else {
-        ok("AGD operation lock", "")
+    match operation_lock::lock_paths(paths, &project.project_id) {
+        Ok(locks) if locks.is_empty() => ok("AGD operation lock", ""),
+        Ok(locks) => fail(
+            "AGD operation lock",
+            locks
+                .iter()
+                .map(|lock| lock.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+        ),
+        Err(error) => fail("AGD operation lock", error.to_string()),
     }
 }
 

@@ -5,6 +5,7 @@ mod doctor;
 mod git;
 mod guardrails;
 mod json_output;
+mod operation_lock;
 mod output;
 mod paths;
 mod project;
@@ -72,7 +73,7 @@ fn main() -> Result<()> {
         Some(Command::Sync) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            sync::sync(context.project())?;
+            sync::sync(&paths, context.project())?;
         }
         Some(Command::Branches) => {
             let cwd = std::env::current_dir()?;
@@ -109,7 +110,7 @@ fn main() -> Result<()> {
         Some(Command::Discard { branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            cleanup::discard(context.project(), &branch)?;
+            cleanup::discard(&paths, context.project(), &branch)?;
         }
         Some(Command::ResetWorkspace) => {
             let cwd = std::env::current_dir()?;
