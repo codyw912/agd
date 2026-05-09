@@ -419,6 +419,56 @@ fn bless_squashes_agent_branch_into_one_human_commit() {
 }
 
 #[test]
+fn bless_abort_restores_human_checkout_after_squash_conflict() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/conflict"]);
+    fixture.write_file(&workspace, "README.md", "agent change\n");
+    fixture.git_in(&workspace, ["add", "README.md"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent conflict"]);
+
+    fixture.write_file(&fixture.human, "README.md", "human change\n");
+    fixture.git(["add", "README.md"]);
+    fixture.git(["commit", "-m", "human conflict"]);
+    let human_head = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/conflict"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agd bless --abort"));
+
+    let conflicted_status = fixture.git_stdout(&fixture.human, ["status", "--porcelain"]);
+    assert!(conflicted_status.contains("UU README.md"));
+
+    fixture
+        .agd()
+        .args(["bless", "--abort"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Aborted bless operation"));
+
+    let status = fixture.git_stdout(&fixture.human, ["status", "--porcelain"]);
+    assert!(status.trim().is_empty());
+    let head_after_abort = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+    assert_eq!(head_after_abort.trim(), human_head.trim());
+    let readme = fs::read_to_string(fixture.human.join("README.md")).expect("read README");
+    assert_eq!(readme, "human change\n");
+}
+
+#[test]
 fn bless_preserve_replays_agent_commits_with_human_signatures() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

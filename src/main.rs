@@ -121,9 +121,20 @@ fn main() -> Result<()> {
             branch,
             preserve,
             merge,
+            abort,
         }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
+            if abort {
+                if branch.is_some() || preserve || merge {
+                    bail!("bless --abort cannot be combined with branch adoption options");
+                }
+                adoption::abort(context.project())?;
+                return Ok(());
+            }
+            let Some(branch) = branch else {
+                bail!("bless requires a branch, or use bless --abort");
+            };
             if preserve && merge {
                 bail!("choose only one bless adoption mode");
             }
@@ -134,7 +145,7 @@ fn main() -> Result<()> {
             } else {
                 adoption::AdoptionMode::Squash
             };
-            adoption::bless(&paths, context.project(), &branch, mode)?;
+            adoption::bless(&paths, context.project(), branch.as_str(), mode)?;
         }
         Some(Command::DenySigner { _args: _ }) => {
             guardrails::deny_signing(&paths)?;
