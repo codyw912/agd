@@ -1176,6 +1176,65 @@ fn doctor_detects_existing_agd_operation_lock() {
 }
 
 #[test]
+fn doctor_repair_removes_stale_agd_operation_lock() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let lock_dir = fixture
+        .agd_home
+        .join("projects")
+        .join(fixture.project_id())
+        .join("locks");
+    fs::create_dir_all(&lock_dir).expect("create lock dir");
+    let lock_path = lock_dir.join("bless.lock");
+    fs::write(
+        &lock_path,
+        r#"{
+  "operation_id": "op_stale",
+  "operation": "bless",
+  "project_id": "project_test",
+  "workspace_id": "default",
+  "pid": 999999999,
+  "started_at": "2026-05-09T00:00:00Z"
+}
+"#,
+    )
+    .expect("write stale lock");
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail AGD operation lock"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+
+    fixture
+        .agd()
+        .args(["doctor", "--repair"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Removed stale AGD operation lock"));
+
+    assert!(!lock_path.exists());
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok  AGD operation lock"));
+}
+
+#[test]
 fn doctor_detects_moved_human_checkout_path() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
