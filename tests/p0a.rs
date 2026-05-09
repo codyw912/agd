@@ -1043,6 +1043,31 @@ fn doctor_reports_broken_guardrails() {
 }
 
 #[test]
+fn doctor_detects_human_checkout_using_agd_deny_signer() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let deny_signer = fixture.git_stdout(&workspace, ["config", "gpg.program"]);
+    fixture.git(["config", "gpg.program", deny_signer.trim()]);
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail human signing"))
+        .stdout(predicate::str::contains("AGD deny signer"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
 fn doctor_detects_missing_pre_push_hook() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

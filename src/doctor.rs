@@ -223,6 +223,10 @@ fn checks(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Vec<Check> 
         "remote.origin.pushurl",
         "agd-deny://push-disabled",
     ));
+    checks.push(human_signing_check(
+        &project.human_checkout,
+        &workspace.path,
+    ));
     checks.push(pre_push_hook_check(&workspace.path));
     checks.push(git_state_check("human git state", &project.human_checkout));
     checks.push(git_state_check("workspace git state", &workspace.path));
@@ -351,6 +355,30 @@ fn workspace_origin_check(project: &Project, workspace: &Path) -> Check {
             }
         }
         Err(error) => fail("workspace origin", error.to_string()),
+    }
+}
+
+fn human_signing_check(human_checkout: &Path, workspace: &Path) -> Check {
+    let human_signer = match git::stdout(human_checkout, ["config", "--get", "gpg.program"]) {
+        Ok(signer) => signer,
+        Err(_) => return ok("human signing", ""),
+    };
+    let human_signer = human_signer.trim();
+    if human_signer.is_empty() {
+        return ok("human signing", "");
+    }
+
+    let workspace_signer = match git::stdout(workspace, ["config", "--get", "gpg.program"]) {
+        Ok(signer) => signer,
+        Err(_) => return ok("human signing", ""),
+    };
+    if human_signer == workspace_signer.trim() {
+        fail(
+            "human signing",
+            format!("human checkout uses AGD deny signer {human_signer}"),
+        )
+    } else {
+        ok("human signing", "")
     }
 }
 
