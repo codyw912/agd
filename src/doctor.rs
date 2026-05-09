@@ -195,10 +195,7 @@ fn checks(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Vec<Check> 
     };
 
     checks.push(path_check("workspace exists", &workspace.path));
-    checks.push(path_check(
-        "workspace marker",
-        &workspace.path.join(".agd/workspace.json"),
-    ));
+    checks.push(workspace_marker_check(project, workspace));
     checks.push(workspace_origin_check(project, &workspace.path));
     checks.push(submodule_check(project, &workspace.path));
     checks.push(lfs_check(project, &workspace.path));
@@ -266,6 +263,52 @@ fn human_checkout_path_check(context: &ProjectContext, cwd: &Path) -> Check {
         }
         Err(error) => fail("human checkout path", error.to_string()),
     }
+}
+
+fn workspace_marker_check(project: &Project, workspace: &project::Workspace) -> Check {
+    let marker_path = workspace.path.join(".agd/workspace.json");
+    let marker = match fs::read(&marker_path) {
+        Ok(marker) => marker,
+        Err(error) => return fail("workspace marker", error.to_string()),
+    };
+    let marker: workspace::WorkspaceMarker = match serde_json::from_slice(&marker) {
+        Ok(marker) => marker,
+        Err(error) => return fail("workspace marker", error.to_string()),
+    };
+
+    if marker.kind != "agd-workspace" {
+        return fail("workspace marker", format!("kind {}", marker.kind));
+    }
+    if marker.project_id != project.project_id {
+        return fail(
+            "workspace marker",
+            format!(
+                "project_id expected {}, got {}",
+                project.project_id, marker.project_id
+            ),
+        );
+    }
+    if marker.workspace_id != workspace.id {
+        return fail(
+            "workspace marker",
+            format!(
+                "workspace_id expected {}, got {}",
+                workspace.id, marker.workspace_id
+            ),
+        );
+    }
+    if !equivalent_path(&project.human_checkout, &marker.human_checkout) {
+        return fail(
+            "workspace marker",
+            format!(
+                "human_checkout expected {}, got {}",
+                project.human_checkout.display(),
+                marker.human_checkout.display()
+            ),
+        );
+    }
+
+    ok("workspace marker", "")
 }
 
 fn workspace_origin_check(project: &Project, workspace: &Path) -> Check {
