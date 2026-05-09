@@ -99,6 +99,21 @@ impl Fixture {
         self.git(["config", "gpg.program", signer]);
     }
 
+    fn configure_lock_capturing_human_signer(&self) {
+        let signer = self._tmp.path().join("capture-lock-gpg");
+        fs::write(
+            &signer,
+            "#!/bin/sh\ncat >/dev/null\ncp \"$AGD_TEST_LOCK_PATH\" \"$AGD_TEST_CAPTURE_PATH\"\necho '[GNUPG:] SIG_CREATED D 1 10 00 0 0 0 0' >&2\nprintf '%s\n' '-----BEGIN PGP SIGNATURE-----' '' 'fake' '-----END PGP SIGNATURE-----'\n",
+        )
+        .expect("write lock capturing signer");
+        make_executable(&signer);
+        let signer = signer.to_str().expect("utf-8 signer");
+        self.git(["config", "gpg.format", "openpgp"]);
+        self.git(["config", "commit.gpgsign", "true"]);
+        self.git(["config", "user.signingkey", "human@example.test"]);
+        self.git(["config", "gpg.program", signer]);
+    }
+
     fn git<const N: usize>(&self, args: [&str; N]) {
         self.git_in(&self.human, args);
     }
@@ -541,6 +556,59 @@ fn bless_refuses_existing_operation_lock() {
             .trim(),
         "1"
     );
+}
+
+#[test]
+fn bless_lock_records_recovery_metadata_while_operation_runs() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_lock_capturing_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "agent work\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
+
+    let project_id = fixture.project_id();
+    let lock_path = fixture
+        .agd_home
+        .join("projects")
+        .join(&project_id)
+        .join("locks")
+        .join("bless.lock");
+    let captured_lock_path = fixture._tmp.path().join("captured-bless.lock.json");
+
+    fixture
+        .agd()
+        .args(["bless", "agent/refactor-auth"])
+        .env("AGD_TEST_LOCK_PATH", &lock_path)
+        .env("AGD_TEST_CAPTURE_PATH", &captured_lock_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Blessed agent/refactor-auth"));
+
+    assert!(!lock_path.exists());
+    let lock = fs::read(&captured_lock_path).expect("captured bless lock");
+    let lock: Value = serde_json::from_slice(&lock).expect("parse captured bless lock");
+    assert!(lock["operation_id"]
+        .as_str()
+        .expect("operation id")
+        .starts_with("op_"));
+    assert_eq!(lock["operation"], "bless");
+    assert_eq!(lock["project_id"], project_id);
+    assert_eq!(lock["workspace_id"], "default");
+    assert!(lock["pid"].as_u64().expect("pid") > 0);
+    let started_at = lock["started_at"].as_str().expect("started_at");
+    assert!(started_at.contains('T'));
+    assert!(started_at.ends_with('Z'));
 }
 
 #[test]

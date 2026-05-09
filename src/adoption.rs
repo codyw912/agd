@@ -47,7 +47,7 @@ fn prepare<'a>(
     require_clean(&workspace.path, "agent workspace")?;
 
     let operation_id = format!("op_{}", Uuid::new_v4().simple());
-    let _lock = AdoptionLock::acquire(paths, &project.project_id, &operation_id)?;
+    let _lock = AdoptionLock::acquire(paths, &project.project_id, &workspace.id, &operation_id)?;
     let safety_ref = format!("refs/agd/safety/{operation_id}");
     git::run(&project.human_checkout, ["update-ref", &safety_ref, "HEAD"])?;
 
@@ -189,14 +189,25 @@ struct AdoptionLock {
 }
 
 impl AdoptionLock {
-    fn acquire(paths: &AgdPaths, project_id: &str, operation_id: &str) -> Result<Self> {
+    fn acquire(
+        paths: &AgdPaths,
+        project_id: &str,
+        workspace_id: &str,
+        operation_id: &str,
+    ) -> Result<Self> {
         let lock_dir = paths.project_dir(project_id).join("locks");
         fs::create_dir_all(&lock_dir).with_context(|| format!("create {}", lock_dir.display()))?;
         let path = lock_dir.join("bless.lock");
+        let started_at = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .context("format lock timestamp")?;
         let lock = serde_json::json!({
             "operation_id": operation_id,
             "operation": "bless",
             "project_id": project_id,
+            "workspace_id": workspace_id,
+            "pid": std::process::id(),
+            "started_at": started_at,
         });
         let mut lock_file = match fs::OpenOptions::new()
             .write(true)
