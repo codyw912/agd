@@ -1199,6 +1199,60 @@ fn doctor_repair_fixes_moved_human_checkout_path() {
 }
 
 #[test]
+fn doctor_repair_restores_workspace_guardrails() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["config", "commit.gpgsign", "true"]);
+    fixture.git_in(&workspace, ["config", "--unset-all", "gpg.program"]);
+    fixture.git_in(
+        &workspace,
+        [
+            "remote",
+            "set-url",
+            "--push",
+            "origin",
+            fixture.human.to_str().unwrap(),
+        ],
+    );
+    fs::remove_file(workspace.join(".git/hooks/pre-push")).expect("remove pre-push hook");
+
+    fixture
+        .agd()
+        .args(["doctor", "--repair"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Repaired workspace guardrails"));
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok  signing disabled"))
+        .stdout(predicate::str::contains("ok  deny signer"))
+        .stdout(predicate::str::contains("ok  push disabled"))
+        .stdout(predicate::str::contains("ok  pre-push hook"));
+
+    let signing = fixture.git_stdout(&workspace, ["config", "commit.gpgsign"]);
+    assert_eq!(signing.trim(), "false");
+    let deny_signer = fixture.git_stdout(&workspace, ["config", "gpg.program"]);
+    assert!(std::path::Path::new(deny_signer.trim()).exists());
+    let pushurl = fixture.git_stdout(&workspace, ["remote", "get-url", "--push", "origin"]);
+    assert_eq!(pushurl.trim(), "agd-deny://push-disabled");
+    assert!(workspace.join(".git/hooks/pre-push").exists());
+}
+
+#[test]
 fn doctor_warns_when_submodules_are_declared() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
