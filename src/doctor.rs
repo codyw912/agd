@@ -161,6 +161,7 @@ fn checks(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Vec<Check> 
         "workspace marker",
         &workspace.path.join(".agd/workspace.json"),
     ));
+    checks.push(workspace_origin_check(project, &workspace.path));
     checks.push(submodule_check(project, &workspace.path));
     checks.push(lfs_check(project, &workspace.path));
     checks.push(config_check(
@@ -226,6 +227,27 @@ fn human_checkout_path_check(context: &ProjectContext, cwd: &Path) -> Check {
             }
         }
         Err(error) => fail("human checkout path", error.to_string()),
+    }
+}
+
+fn workspace_origin_check(project: &Project, workspace: &Path) -> Check {
+    match git::stdout(workspace, ["config", "--get", "remote.origin.url"]) {
+        Ok(origin) => {
+            let origin = origin.trim();
+            let origin_path = PathBuf::from(origin);
+            if equivalent_path(&project.human_checkout, &origin_path) {
+                ok("workspace origin", "")
+            } else {
+                fail(
+                    "workspace origin",
+                    format!(
+                        "expected {}, got {origin}",
+                        project.human_checkout.display()
+                    ),
+                )
+            }
+        }
+        Err(error) => fail("workspace origin", error.to_string()),
     }
 }
 

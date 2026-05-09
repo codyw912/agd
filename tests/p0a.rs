@@ -1253,6 +1253,60 @@ fn doctor_repair_restores_workspace_guardrails() {
 }
 
 #[test]
+fn doctor_detects_and_repairs_broken_workspace_origin() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    let stale_origin = fixture._tmp.path().join("stale-human");
+    fixture.git_in(
+        &workspace,
+        [
+            "remote",
+            "set-url",
+            "origin",
+            stale_origin.to_str().expect("stale origin utf-8"),
+        ],
+    );
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail workspace origin"))
+        .stdout(predicate::str::contains("stale-human"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+
+    fixture
+        .agd()
+        .args(["doctor", "--repair"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Repaired workspace origin"));
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok  workspace origin"));
+
+    let current_checkout = fixture.git_stdout(&fixture.human, ["rev-parse", "--show-toplevel"]);
+    let origin = fixture.git_stdout(&workspace, ["remote", "get-url", "origin"]);
+    assert_eq!(origin.trim(), current_checkout.trim());
+}
+
+#[test]
 fn doctor_warns_when_submodules_are_declared() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
