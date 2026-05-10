@@ -25,6 +25,14 @@ struct StatusResponse {
 }
 
 #[derive(Debug, Serialize)]
+struct InitResponse {
+    project_id: String,
+    project: String,
+    human_checkout: String,
+    workspace: WorkspaceResponse,
+}
+
+#[derive(Debug, Serialize)]
 struct WorkspaceResponse {
     id: String,
     name: String,
@@ -64,6 +72,15 @@ struct WorkspaceCreatedResponse {
 pub fn path(workspace: &Workspace) -> Result<()> {
     print(&PathResponse {
         path: workspace.path.display().to_string(),
+    })
+}
+
+pub fn init(project: &Project, workspace: &Workspace) -> Result<()> {
+    print(&InitResponse {
+        project_id: project.project_id.clone(),
+        project: project.name.clone(),
+        human_checkout: project.human_checkout.display().to_string(),
+        workspace: workspace_response(workspace),
     })
 }
 
