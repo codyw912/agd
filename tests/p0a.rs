@@ -400,6 +400,43 @@ fn identity_shows_project_agent_identity() {
 }
 
 #[test]
+fn shell_enters_default_workspace_with_agd_environment() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let capture = fixture._tmp.path().join("shell-capture.txt");
+    let fake_shell = fixture._tmp.path().join("fake-shell");
+    fs::write(
+        &fake_shell,
+        "#!/bin/sh\n{\nprintf 'pwd=%s\\n' \"$(pwd -P)\"\nprintf 'AGD_WORKSPACE=%s\\n' \"$AGD_WORKSPACE\"\nprintf 'AGD_PROJECT_ID=%s\\n' \"$AGD_PROJECT_ID\"\nprintf 'AGD_WORKSPACE_ID=%s\\n' \"$AGD_WORKSPACE_ID\"\n} > \"$AGD_TEST_SHELL_CAPTURE\"\n",
+    )
+    .expect("write fake shell");
+    make_executable(&fake_shell);
+
+    fixture
+        .agd()
+        .arg("shell")
+        .env("SHELL", &fake_shell)
+        .env("AGD_TEST_SHELL_CAPTURE", &capture)
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let output = fs::read_to_string(capture).expect("read shell capture");
+    let workspace = workspace.canonicalize().expect("canonical workspace");
+    assert!(output.contains(&format!("pwd={}\n", workspace.display())));
+    assert!(output.contains("AGD_WORKSPACE=1\n"));
+    assert!(output.contains(&format!("AGD_PROJECT_ID={}\n", fixture.project_id())));
+    assert!(output.contains("AGD_WORKSPACE_ID=default\n"));
+}
+
+#[test]
 fn workspace_list_shows_recorded_workspaces() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

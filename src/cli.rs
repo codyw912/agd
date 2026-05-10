@@ -34,6 +34,7 @@ pub enum Command {
     Pr {
         branch: Option<String>,
     },
+    Shell,
     Files {
         branch: Option<String>,
     },
