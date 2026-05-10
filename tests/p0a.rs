@@ -400,6 +400,23 @@ fn identity_shows_project_agent_identity() {
 }
 
 #[test]
+fn json_identity_outputs_project_agent_identity() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let identity = fixture.agd_json(["--json", "identity"], &fixture.human);
+    assert_eq!(identity["name"], "Local Agent");
+    assert_eq!(identity["email"], "agent@agd.invalid");
+    assert_eq!(identity["signing"], "unsigned");
+}
+
+#[test]
 fn shell_enters_default_workspace_with_agd_environment() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

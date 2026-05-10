@@ -70,7 +70,11 @@ fn main() -> Result<()> {
         Some(Command::Identity) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            identity::show(context.project());
+            if json {
+                json_output::identity(&context.project().agent_identity)?;
+            } else {
+                identity::show(context.project());
+            }
         }
         Some(Command::Doctor { repair }) => {
             let cwd = std::env::current_dir()?;
