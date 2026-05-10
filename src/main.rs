@@ -178,8 +178,19 @@ fn main() -> Result<()> {
                 }
                 WorkspaceCommand::Create { name } => {
                     let mut project = context.project().clone();
-                    workspace_commands::create(&paths, &mut project, &name)?;
-                    project::save_project(&paths, &project)?;
+                    if json {
+                        workspace::ensure_workspace(&paths, &mut project, &name)?;
+                        project::save_project(&paths, &project)?;
+                        let workspace = project
+                            .workspaces
+                            .iter()
+                            .find(|workspace| workspace.id == name)
+                            .ok_or_else(|| anyhow::anyhow!("workspace not found: {name}"))?;
+                        json_output::workspace_created(workspace)?;
+                    } else {
+                        workspace_commands::create(&paths, &mut project, &name)?;
+                        project::save_project(&paths, &project)?;
+                    }
                 }
             }
         }
