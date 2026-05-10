@@ -93,6 +93,10 @@ pub fn files(files: review::ChangedFiles) -> Result<()> {
     })
 }
 
+pub fn identity(identity: &Identity) -> Result<()> {
+    print(&identity_response(identity))
+}
+
 pub fn print<T: Serialize>(value: &T) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(value)?);
     Ok(())
