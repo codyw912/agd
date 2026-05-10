@@ -594,6 +594,86 @@ fn bless_squashes_agent_branch_into_one_human_commit() {
 }
 
 #[test]
+fn verify_reports_missing_agd_metadata_for_plain_commit() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["verify", "HEAD"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("missing AGD metadata"));
+}
+
+#[test]
+fn json_verify_reports_missing_agd_metadata() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let output = fixture
+        .agd()
+        .args(["--json", "verify", "HEAD"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let report: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(report["status"], "missing_metadata");
+    assert_eq!(report["commit"], "HEAD");
+}
+
+#[test]
+fn verify_reports_missing_patch_hash_for_current_adoption_commit() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/verify"]);
+    fixture.write_file(&workspace, "verify.txt", "verify me\n");
+    fixture.git_in(&workspace, ["add", "verify.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "verify me"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/verify"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["verify", "HEAD"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("AGD metadata found"))
+        .stdout(predicate::str::contains("missing AGD-Patch-SHA256"));
+}
+
+#[test]
 fn bless_abort_restores_human_checkout_after_squash_conflict() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

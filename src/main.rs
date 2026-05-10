@@ -15,6 +15,7 @@ mod pull_request;
 mod review;
 mod shell_command;
 mod sync;
+mod verify;
 mod workspace;
 mod workspace_commands;
 
@@ -120,6 +121,17 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             pull_request::open(context.project(), branch.as_deref(), &cwd)?;
+        }
+        Some(Command::Verify { commit }) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            if json {
+                let report = verify::report(context.project(), &commit)?;
+                json_output::print(&report)?;
+                verify::ensure_verified(&report)?;
+            } else {
+                verify::verify(context.project(), &commit)?;
+            }
         }
         Some(Command::Shell) => {
             let cwd = std::env::current_dir()?;

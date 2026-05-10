@@ -39,6 +39,9 @@ pub enum Command {
     Pr {
         branch: Option<String>,
     },
+    Verify {
+        commit: String,
+    },
     Shell,
     Files {
         branch: Option<String>,
