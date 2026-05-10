@@ -169,7 +169,13 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             match command {
-                WorkspaceCommand::List => workspace_commands::list(context.project()),
+                WorkspaceCommand::List => {
+                    if json {
+                        json_output::workspaces(context.project())?;
+                    } else {
+                        workspace_commands::list(context.project());
+                    }
+                }
                 WorkspaceCommand::Create { name } => {
                     let mut project = context.project().clone();
                     workspace_commands::create(&paths, &mut project, &name)?;

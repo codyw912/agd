@@ -51,6 +51,11 @@ struct FilesResponse {
     files: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct WorkspacesResponse {
+    workspaces: Vec<WorkspaceResponse>,
+}
+
 pub fn path(workspace: &Workspace) -> Result<()> {
     print(&PathResponse {
         path: workspace.path.display().to_string(),
@@ -95,6 +100,12 @@ pub fn files(files: review::ChangedFiles) -> Result<()> {
 
 pub fn identity(identity: &Identity) -> Result<()> {
     print(&identity_response(identity))
+}
+
+pub fn workspaces(project: &Project) -> Result<()> {
+    print(&WorkspacesResponse {
+        workspaces: project.workspaces.iter().map(workspace_response).collect(),
+    })
 }
 
 pub fn print<T: Serialize>(value: &T) -> Result<()> {
