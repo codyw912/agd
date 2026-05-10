@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(name = "agd", about = "Agent Git Delegation")]
@@ -24,7 +25,10 @@ pub enum Command {
         repair: bool,
     },
     Sync,
-    Handoff,
+    Handoff {
+        #[arg(long = "include-untracked")]
+        include_untracked: Vec<PathBuf>,
+    },
     Branches,
     Log {
         branch: Option<String>,

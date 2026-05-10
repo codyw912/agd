@@ -1333,6 +1333,46 @@ fn handoff_refuses_untracked_human_files() {
 }
 
 #[test]
+fn handoff_copies_selected_untracked_human_files() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.write_file(&fixture.human, "notes/sketch.txt", "selected sketch\n");
+    fixture.write_file(&fixture.human, "private.txt", "unselected sketch\n");
+
+    fixture
+        .agd()
+        .args(["handoff", "--include-untracked", "notes/sketch.txt"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Handed off human changes to default",
+        ));
+
+    let copied =
+        fs::read_to_string(workspace.join("notes/sketch.txt")).expect("read selected sketch");
+    assert_eq!(copied, "selected sketch\n");
+    assert!(!workspace.join("private.txt").exists());
+    let selected_status = fixture.git_stdout(
+        &workspace,
+        ["status", "--porcelain", "--", "notes/sketch.txt"],
+    );
+    assert_eq!(selected_status.trim(), "?? notes/sketch.txt");
+    let metadata =
+        fs::read(workspace.join(".git/agd/handoff.json")).expect("read handoff metadata");
+    let metadata: Value = serde_json::from_slice(&metadata).expect("parse handoff metadata");
+    assert_eq!(metadata["untracked_files"][0], "notes/sketch.txt");
+}
+
+#[test]
 fn operation_locks_block_mutating_commands() {
     let sync_locked = Fixture::new();
     sync_locked.init_human_repo();
