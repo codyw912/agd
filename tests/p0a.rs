@@ -1306,6 +1306,34 @@ fn sync_fast_forwards_default_target_from_human_checkout() {
 }
 
 #[test]
+fn json_sync_outputs_updated_target() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let before = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+    let after = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+
+    let response = fixture.agd_json(["--json", "sync"], &fixture.human);
+    assert_eq!(response["target"], "main");
+    assert_eq!(response["workspace_id"], "default");
+    assert_eq!(response["before"], before.trim());
+    assert_eq!(response["after"], after.trim());
+
+    let workspace_main = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+    assert_eq!(workspace_main.trim(), after.trim());
+}
+
+#[test]
 fn sync_does_not_touch_agent_branches() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
