@@ -21,26 +21,52 @@ struct HandoffMetadata {
     created_at: String,
 }
 
-pub fn handoff(paths: &AgdPaths, project: &Project, include_untracked: &[PathBuf]) -> Result<()> {
+#[derive(Debug, Serialize)]
+pub struct HandoffResult {
+    pub status: &'static str,
+    pub workspace_id: String,
+    pub human_head: String,
+    pub tracked_files: Vec<String>,
+    pub untracked_files: Vec<String>,
+}
+
+pub fn handoff(
+    paths: &AgdPaths,
+    project: &Project,
+    include_untracked: &[PathBuf],
+) -> Result<HandoffResult> {
     let workspace = json_output::default_workspace(project)?;
     require_clean(&workspace.path, "agent workspace")?;
     require_no_untracked_human_files(&project.human_checkout, include_untracked)?;
     let _lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "handoff")?;
 
     let diff = git::stdout(&project.human_checkout, ["diff", "--binary", "HEAD"])?;
+    let human_head = git::stdout(&project.human_checkout, ["rev-parse", "HEAD"])?;
+    let tracked_files = tracked_files(&project.human_checkout)?;
+    let untracked_files = selected_untracked_files(include_untracked);
     if diff.trim().is_empty() && include_untracked.is_empty() {
-        println!("No human changes to hand off");
-        return Ok(());
+        return Ok(HandoffResult {
+            status: "noop",
+            workspace_id: workspace.id.clone(),
+            human_head: human_head.trim().to_string(),
+            tracked_files,
+            untracked_files,
+        });
     }
 
     if !diff.trim().is_empty() {
         apply_patch(&workspace.path, &diff)?;
     }
     copy_untracked_files(&project.human_checkout, &workspace.path, include_untracked)?;
-    write_metadata(project, workspace, include_untracked)?;
+    write_metadata(project, workspace, &human_head, include_untracked)?;
 
-    println!("Handed off human changes to {}", workspace.id);
-    Ok(())
+    Ok(HandoffResult {
+        status: "applied",
+        workspace_id: workspace.id.clone(),
+        human_head: human_head.trim().to_string(),
+        tracked_files,
+        untracked_files,
+    })
 }
 
 fn require_clean(repo: &Path, name: &str) -> Result<()> {
@@ -63,6 +89,18 @@ fn require_no_untracked_human_files(repo: &Path, include_untracked: &[PathBuf]) 
         );
     }
     Ok(())
+}
+
+fn tracked_files(repo: &Path) -> Result<Vec<String>> {
+    let files = git::stdout(repo, ["diff", "--name-only", "HEAD"])?;
+    Ok(files.lines().map(str::to_string).collect())
+}
+
+fn selected_untracked_files(paths: &[PathBuf]) -> Vec<String> {
+    paths
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect()
 }
 
 fn copy_untracked_files(human_checkout: &Path, workspace: &Path, paths: &[PathBuf]) -> Result<()> {
@@ -148,9 +186,9 @@ fn apply_patch(repo: &Path, diff: &str) -> Result<()> {
 fn write_metadata(
     project: &Project,
     workspace: &Workspace,
+    human_head: &str,
     include_untracked: &[PathBuf],
 ) -> Result<()> {
-    let human_head = git::stdout(&project.human_checkout, ["rev-parse", "HEAD"])?;
     let created_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .context("format timestamp")?;

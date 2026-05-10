@@ -1560,6 +1560,46 @@ fn handoff_copies_selected_untracked_human_files() {
 }
 
 #[test]
+fn json_handoff_outputs_applied_changes() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let human_head = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+
+    fixture.write_file(&fixture.human, "README.md", "# test\nhuman sketch\n");
+    fixture.write_file(&fixture.human, "notes/sketch.txt", "selected sketch\n");
+
+    let response = fixture.agd_json(
+        [
+            "--json",
+            "handoff",
+            "--include-untracked",
+            "notes/sketch.txt",
+        ],
+        &fixture.human,
+    );
+    assert_eq!(response["status"], "applied");
+    assert_eq!(response["workspace_id"], "default");
+    assert_eq!(response["human_head"], human_head.trim());
+    assert_eq!(response["tracked_files"], serde_json::json!(["README.md"]));
+    assert_eq!(
+        response["untracked_files"],
+        serde_json::json!(["notes/sketch.txt"])
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.join("README.md")).expect("read readme"),
+        "# test\nhuman sketch\n"
+    );
+    assert!(workspace.join("notes/sketch.txt").exists());
+}
+
+#[test]
 fn operation_locks_block_mutating_commands() {
     let sync_locked = Fixture::new();
     sync_locked.init_human_repo();
