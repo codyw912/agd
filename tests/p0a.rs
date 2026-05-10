@@ -367,6 +367,40 @@ fn status_identifies_human_checkout_and_agent_workspace() {
 }
 
 #[test]
+fn workspace_list_shows_recorded_workspaces() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let workspace_text = workspace.to_str().expect("workspace path utf-8");
+
+    fixture
+        .agd()
+        .args(["workspace", "list"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("default"))
+        .stdout(predicate::str::contains("active"))
+        .stdout(predicate::str::contains(workspace_text));
+
+    fixture
+        .agd()
+        .args(["workspace", "list"])
+        .current_dir(&workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("default"))
+        .stdout(predicate::str::contains("active"))
+        .stdout(predicate::str::contains(workspace_text));
+}
+
+#[test]
 fn json_path_and_status_outputs_are_machine_readable() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

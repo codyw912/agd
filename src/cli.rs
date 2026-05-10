@@ -37,6 +37,10 @@ pub enum Command {
         branch: String,
     },
     ResetWorkspace,
+    Workspace {
+        #[command(subcommand)]
+        command: WorkspaceCommand,
+    },
     Bless {
         branch: Option<String>,
         #[arg(long)]
@@ -53,4 +57,9 @@ pub enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         _args: Vec<String>,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum WorkspaceCommand {
+    List,
 }
