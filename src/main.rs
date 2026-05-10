@@ -13,10 +13,11 @@ mod pull_request;
 mod review;
 mod sync;
 mod workspace;
+mod workspace_commands;
 
 use anyhow::{bail, Result};
 use clap::Parser;
-use cli::Command;
+use cli::{Command, WorkspaceCommand};
 
 fn main() -> Result<()> {
     let cli = cli::Cli::parse();
@@ -122,6 +123,13 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             cleanup::reset_workspace(&paths, context.project())?;
+        }
+        Some(Command::Workspace { command }) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            match command {
+                WorkspaceCommand::List => workspace_commands::list(context.project()),
+            }
         }
         Some(Command::Bless {
             branch,
