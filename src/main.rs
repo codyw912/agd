@@ -34,11 +34,16 @@ fn main() -> Result<()> {
             let mut project = project::init_project(&paths, &cwd)?;
             let workspace_path = workspace::ensure_default_workspace(&paths, &mut project)?;
             project::save_project(&paths, &project)?;
-            println!("Initialized AGD.");
-            println!("Human checkout:");
-            println!("  {}", project.human_checkout.display());
-            println!("Agent workspace:");
-            println!("  {}", workspace_path.display());
+            if json {
+                let workspace = json_output::default_workspace(&project)?;
+                json_output::init(&project, workspace)?;
+            } else {
+                println!("Initialized AGD.");
+                println!("Human checkout:");
+                println!("  {}", project.human_checkout.display());
+                println!("Agent workspace:");
+                println!("  {}", workspace_path.display());
+            }
         }
         Some(Command::Path { workspace }) => {
             let cwd = std::env::current_dir()?;

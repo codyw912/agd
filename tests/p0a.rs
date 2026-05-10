@@ -255,6 +255,26 @@ fn init_writes_project_metadata_and_human_marker() {
 }
 
 #[test]
+fn json_init_outputs_project_and_workspace_metadata() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let human_checkout = fixture.human.canonicalize().expect("canonical human");
+    let human_checkout = human_checkout.to_str().expect("human checkout utf-8");
+
+    let response = fixture.agd_json(["--json", "init"], &fixture.human);
+    assert!(response["project_id"]
+        .as_str()
+        .is_some_and(|project_id| project_id.starts_with("project_")));
+    assert_eq!(response["human_checkout"], human_checkout);
+    assert_eq!(response["workspace"]["id"], "default");
+    assert_eq!(response["workspace"]["status"], "active");
+    let workspace = response["workspace"]["path"]
+        .as_str()
+        .expect("workspace path");
+    assert!(std::path::Path::new(workspace).join(".git").exists());
+}
+
+#[test]
 fn init_creates_managed_clone_and_path_returns_it() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
