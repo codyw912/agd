@@ -21,7 +21,16 @@ pub struct WorkspaceMarker {
 }
 
 pub fn ensure_default_workspace(paths: &AgdPaths, project: &mut Project) -> Result<PathBuf> {
-    let workspace_path = default_workspace_path(paths, project);
+    ensure_workspace(paths, project, DEFAULT_WORKSPACE_ID)
+}
+
+pub fn ensure_workspace(
+    paths: &AgdPaths,
+    project: &mut Project,
+    workspace_id: &str,
+) -> Result<PathBuf> {
+    validate_workspace_id(workspace_id)?;
+    let workspace_path = workspace_path(paths, project, workspace_id);
     if !workspace_path.exists() {
         fs::create_dir_all(
             workspace_path
@@ -42,18 +51,18 @@ pub fn ensure_default_workspace(paths: &AgdPaths, project: &mut Project) -> Resu
     let now = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .context("format timestamp")?;
-    write_workspace_marker(project, &workspace_path, &now)?;
+    write_workspace_marker(project, &workspace_path, workspace_id, &now)?;
     ignore_workspace_metadata(&workspace_path)?;
     guardrails::install(paths, &workspace_path)?;
 
     if project
         .workspaces
         .iter()
-        .all(|workspace| workspace.id != DEFAULT_WORKSPACE_ID)
+        .all(|workspace| workspace.id != workspace_id)
     {
         project.workspaces.push(Workspace {
-            id: DEFAULT_WORKSPACE_ID.to_string(),
-            name: DEFAULT_WORKSPACE_ID.to_string(),
+            id: workspace_id.to_string(),
+            name: workspace_id.to_string(),
             kind: "managed_clone".to_string(),
             path: workspace_path.clone(),
             status: "active".to_string(),
@@ -65,10 +74,15 @@ pub fn ensure_default_workspace(paths: &AgdPaths, project: &mut Project) -> Resu
 }
 
 pub fn repair_workspace_marker(project: &Project, workspace: &Workspace) -> Result<()> {
-    write_workspace_marker(project, &workspace.path, &workspace.created_at)
+    write_workspace_marker(
+        project,
+        &workspace.path,
+        &workspace.id,
+        &workspace.created_at,
+    )
 }
 
-fn default_workspace_path(paths: &AgdPaths, project: &Project) -> PathBuf {
+fn workspace_path(paths: &AgdPaths, project: &Project, workspace_id: &str) -> PathBuf {
     paths
         .home
         .join("workspaces")
@@ -77,7 +91,7 @@ fn default_workspace_path(paths: &AgdPaths, project: &Project) -> PathBuf {
             slug(&project.name),
             project_short_id(&project.project_id)
         ))
-        .join(DEFAULT_WORKSPACE_ID)
+        .join(workspace_id)
 }
 
 fn project_short_id(project_id: &str) -> String {
@@ -104,12 +118,13 @@ fn slug(name: &str) -> String {
 fn write_workspace_marker(
     project: &Project,
     workspace_path: &Path,
+    workspace_id: &str,
     created_at: &str,
 ) -> Result<()> {
     let marker = WorkspaceMarker {
         kind: "agd-workspace".to_string(),
         project_id: project.project_id.clone(),
-        workspace_id: DEFAULT_WORKSPACE_ID.to_string(),
+        workspace_id: workspace_id.to_string(),
         human_checkout: project.human_checkout.clone(),
         created_at: created_at.to_string(),
     };
@@ -130,6 +145,18 @@ fn ignore_workspace_metadata(workspace_path: &Path) -> Result<()> {
     if !current.lines().any(|line| line.trim() == ".agd/") {
         fs::write(&exclude, format!("{current}\n.agd/\n"))
             .with_context(|| format!("write {}", exclude.display()))?;
+    }
+    Ok(())
+}
+
+fn validate_workspace_id(workspace_id: &str) -> Result<()> {
+    if workspace_id.is_empty()
+        || workspace_id == "."
+        || workspace_id == ".."
+        || workspace_id.contains('/')
+        || workspace_id.contains('\\')
+    {
+        anyhow::bail!("invalid workspace name: {workspace_id}");
     }
     Ok(())
 }
