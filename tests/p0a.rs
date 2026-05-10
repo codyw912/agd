@@ -367,6 +367,39 @@ fn status_identifies_human_checkout_and_agent_workspace() {
 }
 
 #[test]
+fn identity_shows_project_agent_identity() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture
+        .agd()
+        .arg("identity")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Local Agent"))
+        .stdout(predicate::str::contains("agent@agd.invalid"))
+        .stdout(predicate::str::contains("unsigned"));
+
+    fixture
+        .agd()
+        .arg("identity")
+        .current_dir(&workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Local Agent"))
+        .stdout(predicate::str::contains("agent@agd.invalid"))
+        .stdout(predicate::str::contains("unsigned"));
+}
+
+#[test]
 fn workspace_list_shows_recorded_workspaces() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

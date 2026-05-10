@@ -4,6 +4,7 @@ mod cli;
 mod doctor;
 mod git;
 mod guardrails;
+mod identity;
 mod json_output;
 mod operation_lock;
 mod output;
@@ -62,6 +63,11 @@ fn main() -> Result<()> {
             } else {
                 output::status(&context, &cwd)?;
             }
+        }
+        Some(Command::Identity) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            identity::show(context.project());
         }
         Some(Command::Doctor { repair }) => {
             let cwd = std::env::current_dir()?;
