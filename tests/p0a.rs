@@ -401,6 +401,58 @@ fn workspace_list_shows_recorded_workspaces() {
 }
 
 #[test]
+fn workspace_create_adds_named_managed_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Created workspace review"));
+
+    let output = fixture
+        .agd()
+        .args(["path", "--workspace", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let review = std::path::PathBuf::from(String::from_utf8(output).unwrap().trim());
+    assert!(review.join(".git").exists());
+    assert!(review.join(".agd/workspace.json").exists());
+
+    fixture
+        .agd()
+        .args(["workspace", "list"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("review"))
+        .stdout(predicate::str::contains(
+            review.to_str().expect("review path utf-8"),
+        ));
+
+    let marker = fs::read(review.join(".agd/workspace.json")).expect("read workspace marker");
+    let marker: Value = serde_json::from_slice(&marker).expect("parse workspace marker");
+    assert_eq!(marker["workspace_id"], "review");
+    let author = fixture.git_stdout(&review, ["config", "user.email"]);
+    assert_eq!(author.trim(), "agent@agd.invalid");
+    let pushurl = fixture.git_stdout(&review, ["remote", "get-url", "--push", "origin"]);
+    assert_eq!(pushurl.trim(), "agd-deny://push-disabled");
+}
+
+#[test]
 fn json_path_and_status_outputs_are_machine_readable() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

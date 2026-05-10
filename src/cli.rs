@@ -13,7 +13,10 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Init,
-    Path,
+    Path {
+        #[arg(long)]
+        workspace: Option<String>,
+    },
     Status,
     Doctor {
         #[arg(long)]
@@ -62,4 +65,5 @@ pub enum Command {
 #[derive(Debug, Subcommand)]
 pub enum WorkspaceCommand {
     List,
+    Create { name: String },
 }

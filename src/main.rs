@@ -36,11 +36,18 @@ fn main() -> Result<()> {
             println!("Agent workspace:");
             println!("  {}", workspace_path.display());
         }
-        Some(Command::Path) => {
+        Some(Command::Path { workspace }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             let project = context.project();
-            let workspace = json_output::default_workspace(project)?;
+            let workspace = match workspace.as_deref() {
+                Some(workspace) => project
+                    .workspaces
+                    .iter()
+                    .find(|candidate| candidate.id == workspace)
+                    .ok_or_else(|| anyhow::anyhow!("workspace not found: {workspace}"))?,
+                None => json_output::default_workspace(project)?,
+            };
             if json {
                 json_output::path(workspace)?;
             } else {
@@ -129,6 +136,11 @@ fn main() -> Result<()> {
             let context = project::discover(&paths, &cwd)?;
             match command {
                 WorkspaceCommand::List => workspace_commands::list(context.project()),
+                WorkspaceCommand::Create { name } => {
+                    let mut project = context.project().clone();
+                    workspace_commands::create(&paths, &mut project, &name)?;
+                    project::save_project(&paths, &project)?;
+                }
             }
         }
         Some(Command::Bless {
