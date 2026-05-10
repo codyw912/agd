@@ -24,6 +24,7 @@ pub enum Command {
         repair: bool,
     },
     Sync,
+    Handoff,
     Branches,
     Log {
         branch: Option<String>,

@@ -4,6 +4,7 @@ mod cli;
 mod doctor;
 mod git;
 mod guardrails;
+mod handoff;
 mod identity;
 mod json_output;
 mod operation_lock;
@@ -90,6 +91,11 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             sync::sync(&paths, context.project())?;
+        }
+        Some(Command::Handoff) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            handoff::handoff(&paths, context.project())?;
         }
         Some(Command::Branches) => {
             let cwd = std::env::current_dir()?;
