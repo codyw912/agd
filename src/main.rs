@@ -100,7 +100,12 @@ fn main() -> Result<()> {
         Some(Command::Sync) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            sync::sync(&paths, context.project())?;
+            let result = sync::sync(&paths, context.project())?;
+            if json {
+                json_output::print(&result)?;
+            } else {
+                println!("Synced {}", result.target);
+            }
         }
         Some(Command::Handoff { include_untracked }) => {
             let cwd = std::env::current_dir()?;

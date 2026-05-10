@@ -3,10 +3,19 @@ use crate::operation_lock::OperationLock;
 use crate::paths::AgdPaths;
 use crate::project::Project;
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::ffi::OsString;
 use std::path::Path;
 
-pub fn sync(paths: &AgdPaths, project: &Project) -> Result<()> {
+#[derive(Debug, Serialize)]
+pub struct SyncResult {
+    pub target: String,
+    pub workspace_id: String,
+    pub before: String,
+    pub after: String,
+}
+
+pub fn sync(paths: &AgdPaths, project: &Project) -> Result<SyncResult> {
     let workspace = project
         .workspaces
         .iter()
@@ -38,8 +47,12 @@ pub fn sync(paths: &AgdPaths, project: &Project) -> Result<()> {
     let target_ref = format!("refs/heads/{target}");
     git::run(&workspace.path, ["update-ref", &target_ref, human_tip])?;
 
-    println!("Synced {target}");
-    Ok(())
+    Ok(SyncResult {
+        target: target.clone(),
+        workspace_id: workspace.id.clone(),
+        before: workspace_tip.to_string(),
+        after: human_tip.to_string(),
+    })
 }
 
 fn require_clean(repo: &Path, name: &str) -> Result<()> {
