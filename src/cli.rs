@@ -27,6 +27,9 @@ pub enum Command {
     Diff {
         branch: Option<String>,
     },
+    Pr {
+        branch: Option<String>,
+    },
     Files {
         branch: Option<String>,
     },
