@@ -9,6 +9,7 @@ mod operation_lock;
 mod output;
 mod paths;
 mod project;
+mod pull_request;
 mod review;
 mod sync;
 mod workspace;
@@ -93,6 +94,11 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             review::diff(context.project(), branch.as_deref(), &cwd)?;
+        }
+        Some(Command::Pr { branch }) => {
+            let cwd = std::env::current_dir()?;
+            let context = project::discover(&paths, &cwd)?;
+            pull_request::open(context.project(), branch.as_deref(), &cwd)?;
         }
         Some(Command::Files { branch }) => {
             let cwd = std::env::current_dir()?;

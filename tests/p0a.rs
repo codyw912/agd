@@ -145,6 +145,25 @@ impl Fixture {
         self.git(["config", "gpg.program", signer]);
     }
 
+    fn fake_gh_path(&self, capture_path: &std::path::Path) -> std::ffi::OsString {
+        let bin_dir = self._tmp.path().join("fake-bin");
+        fs::create_dir_all(&bin_dir).expect("create fake bin");
+        let gh = bin_dir.join("gh");
+        fs::write(
+            &gh,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nprintf '%s\\n' 'https://example.test/pr/1'\n",
+                capture_path.display()
+            ),
+        )
+        .expect("write fake gh");
+        make_executable(&gh);
+        let current_path = std::env::var_os("PATH").expect("PATH set");
+        let mut paths = std::env::split_paths(&current_path).collect::<Vec<_>>();
+        paths.insert(0, bin_dir);
+        std::env::join_paths(paths).expect("join PATH")
+    }
+
     fn git<const N: usize>(&self, args: [&str; N]) {
         self.git_in(&self.human, args);
     }
@@ -891,6 +910,55 @@ fn review_commands_default_to_current_agent_branch() {
         .assert()
         .success()
         .stdout(predicate::str::contains("current.txt"));
+}
+
+#[test]
+fn pr_command_pushes_agent_branch_and_invokes_gh() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-test"]);
+    fixture.write_file(&workspace, "pr.txt", "agent PR work\n");
+    fixture.git_in(&workspace, ["add", "pr.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent PR work"]);
+
+    let gh_capture = fixture._tmp.path().join("gh-args.txt");
+    let fake_path = fixture.fake_gh_path(&gh_capture);
+
+    fixture
+        .agd()
+        .args(["pr", "agent/pr-test"])
+        .env("PATH", fake_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("https://example.test/pr/1"));
+
+    fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["rev-parse", "--verify", "refs/heads/agent/pr-test"],
+    );
+    let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
+    assert!(gh_args.contains("pr\n"));
+    assert!(gh_args.contains("create\n"));
+    assert!(gh_args.contains("--base\nmain\n"));
+    assert!(gh_args.contains("--head\nagent/pr-test\n"));
+    assert!(gh_args.contains("--title\nagent/pr-test\n"));
+    assert!(gh_args.contains("Agent branch: agent/pr-test"));
+    assert!(gh_args.contains("agent PR work"));
+    assert!(gh_args.contains("pr.txt"));
 }
 
 #[test]
