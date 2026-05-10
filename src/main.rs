@@ -92,10 +92,10 @@ fn main() -> Result<()> {
             let context = project::discover(&paths, &cwd)?;
             sync::sync(&paths, context.project())?;
         }
-        Some(Command::Handoff) => {
+        Some(Command::Handoff { include_untracked }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            handoff::handoff(&paths, context.project())?;
+            handoff::handoff(&paths, context.project(), &include_untracked)?;
         }
         Some(Command::Branches) => {
             let cwd = std::env::current_dir()?;

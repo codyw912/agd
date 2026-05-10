@@ -7,7 +7,7 @@ use anyhow::{bail, Context, Result};
 use serde::Serialize;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
@@ -17,23 +17,27 @@ struct HandoffMetadata {
     project_id: String,
     workspace_id: String,
     human_head: String,
+    untracked_files: Vec<String>,
     created_at: String,
 }
 
-pub fn handoff(paths: &AgdPaths, project: &Project) -> Result<()> {
+pub fn handoff(paths: &AgdPaths, project: &Project, include_untracked: &[PathBuf]) -> Result<()> {
     let workspace = json_output::default_workspace(project)?;
     require_clean(&workspace.path, "agent workspace")?;
-    require_no_untracked_human_files(&project.human_checkout)?;
+    require_no_untracked_human_files(&project.human_checkout, include_untracked)?;
     let _lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "handoff")?;
 
     let diff = git::stdout(&project.human_checkout, ["diff", "--binary", "HEAD"])?;
-    if diff.trim().is_empty() {
+    if diff.trim().is_empty() && include_untracked.is_empty() {
         println!("No human changes to hand off");
         return Ok(());
     }
 
-    apply_patch(&workspace.path, &diff)?;
-    write_metadata(project, workspace)?;
+    if !diff.trim().is_empty() {
+        apply_patch(&workspace.path, &diff)?;
+    }
+    copy_untracked_files(&project.human_checkout, &workspace.path, include_untracked)?;
+    write_metadata(project, workspace, include_untracked)?;
 
     println!("Handed off human changes to {}", workspace.id);
     Ok(())
@@ -47,13 +51,69 @@ fn require_clean(repo: &Path, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn require_no_untracked_human_files(repo: &Path) -> Result<()> {
+fn require_no_untracked_human_files(repo: &Path, include_untracked: &[PathBuf]) -> Result<()> {
     let status = git::stdout(repo, ["status", "--porcelain"])?;
+    if !include_untracked.is_empty() {
+        return Ok(());
+    }
     if let Some(line) = status.lines().find(|line| line.starts_with("?? ")) {
         bail!(
             "human checkout has untracked files; stage or remove them before handoff: {}",
             &line[3..]
         );
+    }
+    Ok(())
+}
+
+fn copy_untracked_files(human_checkout: &Path, workspace: &Path, paths: &[PathBuf]) -> Result<()> {
+    for path in paths {
+        let relative_path = safe_relative_path(path)?;
+        require_untracked_file(human_checkout, &relative_path)?;
+        let source = human_checkout.join(&relative_path);
+        let destination = workspace.join(&relative_path);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        }
+        fs::copy(&source, &destination)
+            .with_context(|| format!("copy {} to {}", source.display(), destination.display()))?;
+    }
+    Ok(())
+}
+
+fn safe_relative_path(path: &Path) -> Result<PathBuf> {
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir
+        )
+    }) {
+        bail!("untracked handoff path must be relative and stay within the checkout");
+    }
+    Ok(path.to_path_buf())
+}
+
+fn require_untracked_file(repo: &Path, path: &Path) -> Result<()> {
+    let status = Command::new("git")
+        .args(["status", "--porcelain", "--"])
+        .arg(path)
+        .current_dir(repo)
+        .output()
+        .context("run git status")?;
+    if !status.status.success() {
+        bail!(
+            "git failed: {}",
+            String::from_utf8_lossy(&status.stderr).trim()
+        );
+    }
+    let status = String::from_utf8(status.stdout).context("git status output was not utf-8")?;
+    if !status.lines().any(|line| line.starts_with("?? ")) {
+        bail!(
+            "untracked handoff path is not an untracked file: {}",
+            path.display()
+        );
+    }
+    if repo.join(path).is_dir() {
+        bail!("untracked handoff path must be a file: {}", path.display());
     }
     Ok(())
 }
@@ -85,7 +145,11 @@ fn apply_patch(repo: &Path, diff: &str) -> Result<()> {
     Ok(())
 }
 
-fn write_metadata(project: &Project, workspace: &Workspace) -> Result<()> {
+fn write_metadata(
+    project: &Project,
+    workspace: &Workspace,
+    include_untracked: &[PathBuf],
+) -> Result<()> {
     let human_head = git::stdout(&project.human_checkout, ["rev-parse", "HEAD"])?;
     let created_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -94,6 +158,10 @@ fn write_metadata(project: &Project, workspace: &Workspace) -> Result<()> {
         project_id: project.project_id.clone(),
         workspace_id: workspace.id.clone(),
         human_head: human_head.trim().to_string(),
+        untracked_files: include_untracked
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect(),
         created_at,
     };
     let path = git_dir(&workspace.path)?.join("agd").join("handoff.json");
