@@ -1248,6 +1248,91 @@ fn sync_refuses_dirty_or_diverged_state() {
 }
 
 #[test]
+fn handoff_applies_human_tracked_changes_to_clean_agent_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let workspace_head = fixture.git_stdout(&workspace, ["rev-parse", "HEAD"]);
+
+    fixture.write_file(&fixture.human, "README.md", "# test\nhuman sketch\n");
+
+    fixture
+        .agd()
+        .arg("handoff")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Handed off human changes to default",
+        ));
+
+    let workspace_readme = fs::read_to_string(workspace.join("README.md")).expect("read readme");
+    assert_eq!(workspace_readme, "# test\nhuman sketch\n");
+    let workspace_status = fixture.git_stdout(&workspace, ["status", "--porcelain"]);
+    assert_eq!(workspace_status.trim(), "M README.md");
+    let workspace_head_after = fixture.git_stdout(&workspace, ["rev-parse", "HEAD"]);
+    assert_eq!(workspace_head_after.trim(), workspace_head.trim());
+    assert!(workspace.join(".git/agd/handoff.json").exists());
+}
+
+#[test]
+fn handoff_refuses_dirty_agent_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.write_file(&fixture.human, "README.md", "# test\nhuman sketch\n");
+    fixture.write_file(&workspace, "agent.txt", "dirty agent\n");
+
+    fixture
+        .agd()
+        .arg("handoff")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "agent workspace has uncommitted changes",
+        ));
+}
+
+#[test]
+fn handoff_refuses_untracked_human_files() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture.write_file(&fixture.human, "sketch.txt", "untracked sketch\n");
+
+    fixture
+        .agd()
+        .arg("handoff")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "human checkout has untracked files",
+        ))
+        .stderr(predicate::str::contains("sketch.txt"));
+}
+
+#[test]
 fn operation_locks_block_mutating_commands() {
     let sync_locked = Fixture::new();
     sync_locked.init_human_repo();
@@ -1315,6 +1400,25 @@ fn operation_locks_block_mutating_commands() {
         .stderr(predicate::str::contains("operation already in progress"))
         .stderr(predicate::str::contains("reset-workspace.lock"));
     assert!(reset_workspace.join(".git").exists());
+
+    let handoff_locked = Fixture::new();
+    handoff_locked.init_human_repo();
+    handoff_locked
+        .agd()
+        .arg("init")
+        .current_dir(&handoff_locked.human)
+        .assert()
+        .success();
+    handoff_locked.write_file(&handoff_locked.human, "README.md", "# test\nlocked\n");
+    handoff_locked.write_operation_lock("handoff");
+    handoff_locked
+        .agd()
+        .arg("handoff")
+        .current_dir(&handoff_locked.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("operation already in progress"))
+        .stderr(predicate::str::contains("handoff.lock"));
 
     let doctor_locked = Fixture::new();
     doctor_locked.init_human_repo();
