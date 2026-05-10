@@ -18,6 +18,7 @@ pub enum Command {
         workspace: Option<String>,
     },
     Status,
+    Identity,
     Doctor {
         #[arg(long)]
         repair: bool,
