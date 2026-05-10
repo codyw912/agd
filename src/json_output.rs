@@ -56,6 +56,11 @@ struct WorkspacesResponse {
     workspaces: Vec<WorkspaceResponse>,
 }
 
+#[derive(Debug, Serialize)]
+struct WorkspaceCreatedResponse {
+    workspace: WorkspaceResponse,
+}
+
 pub fn path(workspace: &Workspace) -> Result<()> {
     print(&PathResponse {
         path: workspace.path.display().to_string(),
@@ -105,6 +110,12 @@ pub fn identity(identity: &Identity) -> Result<()> {
 pub fn workspaces(project: &Project) -> Result<()> {
     print(&WorkspacesResponse {
         workspaces: project.workspaces.iter().map(workspace_response).collect(),
+    })
+}
+
+pub fn workspace_created(workspace: &Workspace) -> Result<()> {
+    print(&WorkspaceCreatedResponse {
+        workspace: workspace_response(workspace),
     })
 }
 

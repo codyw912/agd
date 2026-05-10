@@ -559,6 +559,29 @@ fn workspace_create_adds_named_managed_workspace() {
 }
 
 #[test]
+fn json_workspace_create_outputs_created_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let created = fixture.agd_json(["--json", "workspace", "create", "review"], &fixture.human);
+    assert_eq!(created["workspace"]["id"], "review");
+    assert_eq!(created["workspace"]["status"], "active");
+    let review_path = created["workspace"]["path"]
+        .as_str()
+        .expect("workspace path");
+    assert!(std::path::Path::new(review_path).join(".git").exists());
+
+    let path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    assert_eq!(path["path"], review_path);
+}
+
+#[test]
 fn json_path_and_status_outputs_are_machine_readable() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
