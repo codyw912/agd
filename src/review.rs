@@ -71,14 +71,25 @@ fn commit_log_entry(repo: &Path, hash: &str) -> Result<CommitLogEntry> {
 }
 
 pub fn diff(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
+    let diff = branch_diff(project, branch, cwd)?;
+    print!("{}", diff.patch);
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct BranchDiff {
+    pub branch: String,
+    pub patch: String,
+}
+
+pub fn branch_diff(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<BranchDiff> {
     let workspace = default_workspace(project)?;
     let branch = resolve_branch(project, branch, cwd)?;
-    let output = git::stdout(
+    let patch = git::stdout(
         &workspace.path,
         ["diff", &format!("{}...{branch}", project.default_target)],
     )?;
-    print!("{output}");
-    Ok(())
+    Ok(BranchDiff { branch, patch })
 }
 
 pub fn files(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {

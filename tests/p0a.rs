@@ -1344,6 +1344,31 @@ fn json_log_outputs_branch_commits() {
 }
 
 #[test]
+fn json_diff_outputs_branch_patch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "agent work\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
+
+    let diff = fixture.agd_json(["--json", "diff", "agent/refactor-auth"], &fixture.human);
+    assert_eq!(diff["branch"], "agent/refactor-auth");
+    let patch = diff["patch"].as_str().expect("patch");
+    assert!(patch.contains("diff --git"));
+    assert!(patch.contains("agent.txt"));
+    assert!(patch.contains("+agent work"));
+}
+
+#[test]
 fn review_commands_default_to_current_agent_branch() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

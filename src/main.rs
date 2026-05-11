@@ -141,7 +141,12 @@ fn main() -> Result<()> {
         Some(Command::Diff { branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            review::diff(context.project(), branch.as_deref(), &cwd)?;
+            if json {
+                let diff = review::branch_diff(context.project(), branch.as_deref(), &cwd)?;
+                json_output::print(&diff)?;
+            } else {
+                review::diff(context.project(), branch.as_deref(), &cwd)?;
+            }
         }
         Some(Command::Pr { branch }) => {
             let cwd = std::env::current_dir()?;
