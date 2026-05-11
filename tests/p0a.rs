@@ -1782,6 +1782,52 @@ fn json_pr_outputs_created_pull_request() {
 }
 
 #[test]
+fn pr_rejects_main_mirror_when_default_target_is_not_main() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture.git(["switch", "-c", "develop"]);
+    fixture.write_file(&fixture.human, "develop.txt", "develop base\n");
+    fixture.git(["add", "develop.txt"]);
+    fixture.git(["commit", "-m", "develop base"]);
+    fixture.git(["push", "-u", "origin", "develop"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture.git(["switch", "main"]);
+    fixture.write_file(&fixture.human, "main.txt", "main update\n");
+    fixture.git(["add", "main.txt"]);
+    fixture.git(["commit", "-m", "main update"]);
+    fixture.git(["switch", "develop"]);
+    fixture
+        .agd()
+        .arg("sync")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let gh_capture = fixture._tmp.path().join("gh-main-args.txt");
+    let fake_path = fixture.fake_gh_path(&gh_capture);
+    fixture
+        .agd()
+        .args(["pr", "main"])
+        .env("PATH", fake_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agent branch is required"));
+    assert!(!gh_capture.exists());
+}
+
+#[test]
 fn sync_fast_forwards_default_target_from_human_checkout() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

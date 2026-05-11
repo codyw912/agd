@@ -111,7 +111,7 @@ fn resolve_branch(project: &Project, branch: Option<&str>, cwd: &Path) -> Result
             .trim()
             .to_string(),
     };
-    if branch.is_empty() || branch == project.default_target {
+    if branch.is_empty() || branch == project.default_target || branch == "main" {
         anyhow::bail!("agent branch is required");
     }
     Ok(branch)
