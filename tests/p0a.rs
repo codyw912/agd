@@ -747,7 +747,7 @@ fn json_verify_reports_missing_agd_metadata() {
 }
 
 #[test]
-fn verify_reports_missing_patch_hash_for_current_adoption_commit() {
+fn verify_accepts_current_squash_adoption_commit() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
     fixture.configure_fake_human_signer();
@@ -776,9 +776,18 @@ fn verify_reports_missing_patch_hash_for_current_adoption_commit() {
         .args(["verify", "HEAD"])
         .current_dir(&fixture.human)
         .assert()
-        .failure()
-        .stdout(predicate::str::contains("AGD metadata found"))
-        .stdout(predicate::str::contains("missing AGD-Patch-SHA256"));
+        .success()
+        .stdout(predicate::str::contains("verified AGD patch"));
+
+    let report = fixture.agd_json(["--json", "verify", "HEAD"], &fixture.human);
+    assert_eq!(report["status"], "verified");
+    assert_eq!(
+        report["trailers"]["AGD-Patch-SHA256"]
+            .as_str()
+            .expect("patch hash")
+            .len(),
+        64
+    );
 }
 
 #[test]

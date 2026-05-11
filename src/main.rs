@@ -11,6 +11,7 @@ mod operation_lock;
 mod output;
 mod paths;
 mod project;
+mod provenance;
 mod pull_request;
 mod review;
 mod shell_command;

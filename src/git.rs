@@ -7,6 +7,15 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
+    let output = stdout_bytes(cwd, args)?;
+    String::from_utf8(output).context("git output was not utf-8")
+}
+
+pub fn stdout_bytes<I, S>(cwd: &Path, args: I) -> Result<Vec<u8>>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
     let output = Command::new("git")
         .args(args)
         .current_dir(cwd)
@@ -18,7 +27,7 @@ where
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
-    String::from_utf8(output.stdout).context("git output was not utf-8")
+    Ok(output.stdout)
 }
 
 pub fn run<I, S>(cwd: &Path, args: I) -> Result<()>

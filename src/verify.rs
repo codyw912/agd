@@ -1,5 +1,6 @@
 use crate::git;
 use crate::project::Project;
+use crate::provenance;
 use anyhow::Result;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -38,6 +39,8 @@ pub fn report(project: &Project, commit: &str) -> Result<VerifyReport> {
             status: "missing_metadata",
             missing,
             trailers,
+            expected_patch_sha256: None,
+            actual_patch_sha256: None,
         });
     }
 
@@ -47,14 +50,40 @@ pub fn report(project: &Project, commit: &str) -> Result<VerifyReport> {
             status: "missing_patch_hash",
             missing: vec!["AGD-Patch-SHA256".to_string()],
             trailers,
+            expected_patch_sha256: None,
+            actual_patch_sha256: None,
+        });
+    }
+
+    let expected_patch_sha256 = trailers
+        .get("AGD-Patch-SHA256")
+        .expect("patch hash trailer checked")
+        .to_string();
+    let actual_patch_sha256 = provenance::patch_sha256(
+        &project.human_checkout,
+        trailers
+            .get("AGD-Agent-Base")
+            .expect("base trailer checked"),
+        trailers.get("AGD-Agent-Tip").expect("tip trailer checked"),
+    )?;
+    if expected_patch_sha256 != actual_patch_sha256 {
+        return Ok(VerifyReport {
+            commit: commit.to_string(),
+            status: "mismatch",
+            missing: Vec::new(),
+            trailers,
+            expected_patch_sha256: Some(expected_patch_sha256),
+            actual_patch_sha256: Some(actual_patch_sha256),
         });
     }
 
     Ok(VerifyReport {
         commit: commit.to_string(),
-        status: "unsupported",
+        status: "verified",
         missing: Vec::new(),
         trailers,
+        expected_patch_sha256: Some(expected_patch_sha256),
+        actual_patch_sha256: Some(actual_patch_sha256),
     })
 }
 
@@ -63,12 +92,19 @@ pub fn ensure_verified(report: &VerifyReport) -> Result<()> {
         "verified" => Ok(()),
         "missing_metadata" => anyhow::bail!("commit is missing AGD metadata"),
         "missing_patch_hash" => anyhow::bail!("commit is missing AGD patch hash metadata"),
-        _ => anyhow::bail!("AGD patch verification is not implemented yet"),
+        "mismatch" => anyhow::bail!("AGD patch hash mismatch"),
+        _ => anyhow::bail!("unsupported AGD verification status"),
     }
 }
 
 fn print_text(report: &VerifyReport) {
     match report.status {
+        "verified" => {
+            println!("verified AGD patch");
+            if let Some(hash) = &report.actual_patch_sha256 {
+                println!("AGD-Patch-SHA256: {hash}");
+            }
+        }
         "missing_metadata" => {
             println!("missing AGD metadata: {}", report.missing.join(", "));
         }
@@ -85,8 +121,17 @@ fn print_text(report: &VerifyReport) {
             }
             println!("missing AGD-Patch-SHA256");
         }
+        "mismatch" => {
+            println!("AGD patch hash mismatch");
+            if let Some(expected) = &report.expected_patch_sha256 {
+                println!("Expected: {expected}");
+            }
+            if let Some(actual) = &report.actual_patch_sha256 {
+                println!("Actual: {actual}");
+            }
+        }
         _ => {
-            println!("patch hash metadata present; stable verification is not implemented yet");
+            println!("unsupported AGD verification status");
         }
     }
 }
@@ -97,6 +142,8 @@ pub struct VerifyReport {
     status: &'static str,
     missing: Vec<String>,
     trailers: BTreeMap<String, String>,
+    expected_patch_sha256: Option<String>,
+    actual_patch_sha256: Option<String>,
 }
 
 fn parse_trailers(message: &str) -> BTreeMap<String, String> {
