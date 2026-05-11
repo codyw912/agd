@@ -1708,6 +1708,7 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
     fixture.write_file(&workspace, "pr.txt", "agent PR work\n");
     fixture.git_in(&workspace, ["add", "pr.txt"]);
     fixture.git_in(&workspace, ["commit", "-m", "agent PR work"]);
+    let agent_tip = fixture.git_stdout(&workspace, ["rev-parse", "agent/pr-test"]);
 
     let gh_capture = fixture._tmp.path().join("gh-args.txt");
     let fake_path = fixture.fake_gh_path(&gh_capture);
@@ -1733,6 +1734,7 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
     assert!(gh_args.contains("--title\nagent/pr-test\n"));
     assert!(gh_args.contains("Agent branch: agent/pr-test"));
     assert!(gh_args.contains(&format!("Base commit: {}", base_commit.trim())));
+    assert!(gh_args.contains(&format!("Agent tip: {}", agent_tip.trim())));
     assert!(gh_args.contains("agent PR work"));
     assert!(gh_args.contains("pr.txt"));
 }
