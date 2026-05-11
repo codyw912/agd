@@ -40,6 +40,10 @@ pub struct DoctorCheck {
 
 pub fn doctor(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<()> {
     let report = report(paths, context, cwd);
+    print_report(&report)
+}
+
+pub fn print_report(report: &DoctorReport) -> Result<()> {
     for check in &report.checks {
         let status = match check.status {
             "ok" => "ok ",
@@ -54,7 +58,55 @@ pub fn doctor(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Result<
         }
     }
 
-    ensure_passed(&report)
+    ensure_passed(report)
+}
+
+pub fn metadata_failure_report(paths: &AgdPaths, cwd: &Path) -> Option<DoctorReport> {
+    let human_checkout = git::stdout(cwd, ["rev-parse", "--show-toplevel"]).ok()?;
+    let human_checkout = PathBuf::from(human_checkout.trim());
+    let git_dir = git::stdout(&human_checkout, ["rev-parse", "--git-dir"]).ok()?;
+    let marker_path = resolve_git_dir(&human_checkout, git_dir.trim())
+        .join("agd")
+        .join("project.json");
+    if !marker_path.exists() {
+        return None;
+    }
+
+    let detail = project_metadata_failure_detail(paths, &marker_path)?;
+    Some(DoctorReport {
+        checks: vec![DoctorCheck {
+            status: "fail",
+            name: "project metadata",
+            detail,
+        }],
+        failed: true,
+    })
+}
+
+fn project_metadata_failure_detail(paths: &AgdPaths, marker_path: &Path) -> Option<String> {
+    let marker = match fs::read(marker_path) {
+        Ok(bytes) => bytes,
+        Err(error) => return Some(format!("read {}: {error}", marker_path.display())),
+    };
+    let marker: Value = match serde_json::from_slice(&marker) {
+        Ok(marker) => marker,
+        Err(error) => return Some(format!("parse {}: {error}", marker_path.display())),
+    };
+    let Some(project_id) = marker["project_id"].as_str() else {
+        return Some(format!("missing project_id in {}", marker_path.display()));
+    };
+
+    let project_file = paths.project_file(project_id);
+    if !project_file.exists() {
+        return Some(format!("missing {}", project_file.display()));
+    }
+    let project = match fs::read(&project_file) {
+        Ok(bytes) => bytes,
+        Err(error) => return Some(format!("read {}: {error}", project_file.display())),
+    };
+    serde_json::from_slice::<Project>(&project)
+        .err()
+        .map(|error| format!("parse {}: {error}", project_file.display()))
 }
 
 pub fn report(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> DoctorReport {
@@ -244,6 +296,15 @@ fn path_check(name: &'static str, path: &Path) -> Check {
         ok(name, "")
     } else {
         fail(name, format!("missing {}", path.display()))
+    }
+}
+
+fn resolve_git_dir(repo: &Path, git_dir: &str) -> PathBuf {
+    let path = PathBuf::from(git_dir);
+    if path.is_absolute() {
+        path
+    } else {
+        repo.join(path)
     }
 }
 
