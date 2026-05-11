@@ -2,6 +2,7 @@ use crate::git;
 use crate::operation_lock::OperationLock;
 use crate::paths::AgdPaths;
 use crate::project::Project;
+use crate::provenance;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -60,13 +61,14 @@ pub fn continue_bless(paths: &AgdPaths, project: &Project) -> Result<BlessContin
     }
     let _lock = OperationLock::acquire(paths, &project.project_id, &state.workspace_id, "bless")?;
     let trailers = trailers_from_parts(
+        &project.human_checkout,
         &project.project_id,
         &state.workspace_id,
         &state.branch,
         &state.base,
         &state.tip,
         &state.adoption,
-    );
+    )?;
     commit_squash(project, &state.branch, trailers)?;
     remove_bless_state(project)?;
     Ok(BlessContinueResult {
@@ -141,7 +143,7 @@ fn bless_squash(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<Bl
         );
     }
 
-    let trailers = trailers(project, prepared, "squash");
+    let trailers = trailers(project, prepared, "squash")?;
     commit_squash(project, prepared.branch, trailers)?;
     remove_bless_state(project)?;
 
@@ -164,7 +166,7 @@ fn commit_squash(project: &Project, branch: &str, trailers: String) -> Result<()
 }
 
 fn bless_merge(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<BlessResult> {
-    let trailers = trailers(project, prepared, "merge");
+    let trailers = trailers(project, prepared, "merge")?;
     git::run(
         &project.human_checkout,
         [
@@ -231,8 +233,9 @@ fn bless_result(branch: &str, adoption: &'static str) -> BlessResult {
     }
 }
 
-fn trailers(project: &Project, prepared: &PreparedAdoption<'_>, adoption: &str) -> String {
+fn trailers(project: &Project, prepared: &PreparedAdoption<'_>, adoption: &str) -> Result<String> {
     trailers_from_parts(
+        &project.human_checkout,
         &project.project_id,
         &prepared.workspace.id,
         prepared.branch,
@@ -243,22 +246,18 @@ fn trailers(project: &Project, prepared: &PreparedAdoption<'_>, adoption: &str) 
 }
 
 fn trailers_from_parts(
+    repo: &Path,
     project_id: &str,
     workspace_id: &str,
     branch: &str,
     base: &str,
     tip: &str,
     adoption: &str,
-) -> String {
-    format!(
-        "AGD-Project: {}\nAGD-Workspace: {}\nAGD-Agent-Branch: {}\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\nAGD-Adoption: {}",
-        project_id,
-        workspace_id,
-        branch,
-        base,
-        tip,
-        adoption
-    )
+) -> Result<String> {
+    let patch_hash = provenance::patch_sha256(repo, base, tip)?;
+    Ok(format!(
+        "AGD-Project: {project_id}\nAGD-Workspace: {workspace_id}\nAGD-Agent-Branch: {branch}\nAGD-Agent-Base: {base}\nAGD-Agent-Tip: {tip}\nAGD-Adoption: {adoption}\nAGD-Patch-SHA256: {patch_hash}"
+    ))
 }
 
 fn require_clean(repo: &Path, name: &str) -> Result<()> {
