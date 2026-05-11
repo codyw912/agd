@@ -3198,6 +3198,36 @@ fn doctor_warns_when_lfs_filters_are_declared() {
 }
 
 #[test]
+fn doctor_warns_when_lfs_pointer_files_are_tracked() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.write_file(
+        &fixture.human,
+        "pointer.bin",
+        "version https://git-lfs.github.com/spec/v1\noid sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nsize 123\n",
+    );
+    fixture.git(["add", "pointer.bin"]);
+    fixture.git(["commit", "-m", "track lfs pointer"]);
+
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("warn Git LFS"))
+        .stdout(predicate::str::contains("pointer.bin"))
+        .stdout(predicate::str::contains("pointer"));
+}
+
+#[test]
 fn json_doctor_outputs_checks() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

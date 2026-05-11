@@ -482,7 +482,7 @@ fn submodule_check(project: &Project, workspace: &Path) -> Check {
 
 fn lfs_check(project: &Project, workspace: &Path) -> Check {
     let locations = checkout_files(project, workspace, ".gitattributes");
-    let present: Vec<_> = locations
+    let mut present: Vec<_> = locations
         .into_iter()
         .filter_map(|(label, path)| {
             let contents = fs::read_to_string(&path).ok()?;
@@ -491,6 +491,8 @@ fn lfs_check(project: &Project, workspace: &Path) -> Check {
                 .then(|| format!("{label} {} declares filter=lfs", path.display()))
         })
         .collect();
+    present.extend(lfs_pointer_files("human", &project.human_checkout));
+    present.extend(lfs_pointer_files("workspace", workspace));
 
     if present.is_empty() {
         ok("Git LFS", "")
@@ -500,6 +502,19 @@ fn lfs_check(project: &Project, workspace: &Path) -> Check {
             format!("{}, {}", present.join(", "), git_lfs_status()),
         )
     }
+}
+
+fn lfs_pointer_files(label: &'static str, repo: &Path) -> Vec<String> {
+    let Ok(files) = git::stdout(
+        repo,
+        ["grep", "-Il", "https://git-lfs.github.com/spec/v1", "--"],
+    ) else {
+        return Vec::new();
+    };
+    files
+        .lines()
+        .map(|file| format!("{label} {file} looks like Git LFS pointer"))
+        .collect()
 }
 
 fn checkout_files(project: &Project, workspace: &Path, file: &str) -> Vec<(&'static str, PathBuf)> {
