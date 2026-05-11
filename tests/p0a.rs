@@ -806,6 +806,50 @@ fn bless_abort_restores_human_checkout_after_squash_conflict() {
 }
 
 #[test]
+fn json_bless_abort_outputs_aborted_status() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/conflict"]);
+    fixture.write_file(&workspace, "README.md", "agent change\n");
+    fixture.git_in(&workspace, ["add", "README.md"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent conflict"]);
+
+    fixture.write_file(&fixture.human, "README.md", "human change\n");
+    fixture.git(["add", "README.md"]);
+    fixture.git(["commit", "-m", "human conflict"]);
+    let human_head = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/conflict"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agd bless --abort"));
+
+    let bless_state = fixture.human.join(".git/agd/bless.json");
+    assert!(bless_state.exists());
+
+    let response = fixture.agd_json(["--json", "bless", "--abort"], &fixture.human);
+    assert_eq!(response["status"], "aborted");
+
+    let status = fixture.git_stdout(&fixture.human, ["status", "--porcelain"]);
+    assert!(status.trim().is_empty());
+    let head_after_abort = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+    assert_eq!(head_after_abort.trim(), human_head.trim());
+    assert!(!bless_state.exists());
+}
+
+#[test]
 fn bless_continue_commits_resolved_squash_conflict() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

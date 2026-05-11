@@ -14,6 +14,11 @@ pub enum AdoptionMode {
     Merge,
 }
 
+#[derive(Debug, Serialize)]
+pub struct BlessAbortResult {
+    pub status: &'static str,
+}
+
 pub fn bless(paths: &AgdPaths, project: &Project, branch: &str, mode: AdoptionMode) -> Result<()> {
     let prepared = prepare(paths, project, branch)?;
     match mode {
@@ -23,11 +28,10 @@ pub fn bless(paths: &AgdPaths, project: &Project, branch: &str, mode: AdoptionMo
     }
 }
 
-pub fn abort(project: &Project) -> Result<()> {
+pub fn abort(project: &Project) -> Result<BlessAbortResult> {
     git::run(&project.human_checkout, ["reset", "--merge"])?;
     remove_bless_state(project)?;
-    println!("Aborted bless operation");
-    Ok(())
+    Ok(BlessAbortResult { status: "aborted" })
 }
 
 pub fn continue_bless(paths: &AgdPaths, project: &Project) -> Result<()> {
