@@ -145,5 +145,5 @@ fn default_workspace(project: &Project) -> Result<&crate::project::Workspace> {
 }
 
 fn is_review_branch(project: &Project, branch: &str) -> bool {
-    branch != project.default_target
+    branch != project.default_target && branch != "main"
 }
