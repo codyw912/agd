@@ -64,6 +64,7 @@ fn pr_body(
     workspace: &crate::project::Workspace,
     branch: &str,
 ) -> Result<String> {
+    let base_commit = git::stdout(&workspace.path, ["rev-parse", &project.default_target])?;
     let commits = git::stdout(
         &workspace.path,
         [
@@ -97,8 +98,9 @@ fn pr_body(
     };
 
     Ok(format!(
-        "## Summary\n- Agent branch: {branch}\n- Base branch: {}\n\n## Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Adoption Recommendation\nReview this PR, then adopt with `agd bless {branch}` if it should become signed human history.",
-        project.default_target
+        "## Summary\n- Agent branch: {branch}\n- Base branch: {}\n- Base commit: {}\n\n## Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Adoption Recommendation\nReview this PR, then adopt with `agd bless {branch}` if it should become signed human history.",
+        project.default_target,
+        base_commit.trim()
     ))
 }
 
