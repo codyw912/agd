@@ -84,7 +84,22 @@ fn main() -> Result<()> {
         }
         Some(Command::Doctor { repair }) => {
             let cwd = std::env::current_dir()?;
-            let context = project::discover(&paths, &cwd)?;
+            let context = match project::discover(&paths, &cwd) {
+                Ok(context) => context,
+                Err(error) if !repair => {
+                    if let Some(report) = doctor::metadata_failure_report(&paths, &cwd) {
+                        if json {
+                            json_output::print(&report)?;
+                            doctor::ensure_passed(&report)?;
+                        } else {
+                            doctor::print_report(&report)?;
+                        }
+                        return Ok(());
+                    }
+                    return Err(error);
+                }
+                Err(error) => return Err(error),
+            };
             if repair {
                 if json {
                     bail!("doctor --repair does not support --json");
