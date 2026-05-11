@@ -59,14 +59,15 @@ pub fn report(project: &Project, commit: &str) -> Result<VerifyReport> {
         .get("AGD-Patch-SHA256")
         .expect("patch hash trailer checked")
         .to_string();
-    let actual_patch_sha256 = provenance::patch_sha256(
+    let agent_patch_sha256 = provenance::patch_sha256(
         &project.human_checkout,
         trailers
             .get("AGD-Agent-Base")
             .expect("base trailer checked"),
         trailers.get("AGD-Agent-Tip").expect("tip trailer checked"),
     )?;
-    if expected_patch_sha256 != actual_patch_sha256 {
+    let actual_patch_sha256 = provenance::adopted_patch_sha256(&project.human_checkout, commit)?;
+    if expected_patch_sha256 != agent_patch_sha256 || expected_patch_sha256 != actual_patch_sha256 {
         return Ok(VerifyReport {
             commit: commit.to_string(),
             status: "mismatch",

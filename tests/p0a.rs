@@ -1,6 +1,8 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::fmt::Write as _;
 use std::fs;
 use std::process::Command as StdCommand;
 use tempfile::TempDir;
@@ -227,6 +229,15 @@ fn make_executable(path: &std::path::Path) {
 
 #[cfg(not(unix))]
 fn make_executable(_path: &std::path::Path) {}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut hex, "{byte:02x}").expect("write to string");
+    }
+    hex
+}
 
 #[test]
 fn agd_reports_help() {
@@ -788,6 +799,89 @@ fn verify_accepts_current_squash_adoption_commit() {
             .len(),
         64
     );
+}
+
+#[test]
+fn verify_rejects_commit_when_adopted_patch_differs_from_agent_patch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/verify"]);
+    fixture.write_file(&workspace, "verify.txt", "agent work\n");
+    fixture.git_in(&workspace, ["add", "verify.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
+
+    let base = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+    let tip = fixture.git_stdout(&workspace, ["rev-parse", "agent/verify"]);
+    let patch = fixture.git_stdout(
+        &workspace,
+        [
+            "diff",
+            "--binary",
+            "--full-index",
+            "--no-ext-diff",
+            base.trim(),
+            tip.trim(),
+        ],
+    );
+    let patch_hash = sha256_hex(patch.as_bytes());
+    let workspace_path = workspace.to_str().expect("workspace path");
+    fixture.git_in(
+        &fixture.human,
+        [
+            "fetch",
+            workspace_path,
+            "refs/heads/agent/verify:refs/agd/agent/agent/verify",
+        ],
+    );
+
+    fixture.write_file(&fixture.human, "verify.txt", "different work\n");
+    fixture.git(["add", "verify.txt"]);
+    fixture.git_in(
+        &fixture.human,
+        [
+            "commit",
+            "-m",
+            "Adopt agent/verify",
+            "-m",
+            &format!(
+                "AGD-Project: {}\nAGD-Workspace: default\nAGD-Agent-Branch: agent/verify\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\nAGD-Adoption: squash\nAGD-Patch-SHA256: {}",
+                fixture.project_id(),
+                base.trim(),
+                tip.trim(),
+                patch_hash
+            ),
+        ],
+    );
+
+    fixture
+        .agd()
+        .args(["verify", "HEAD"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("AGD patch hash mismatch"));
+
+    let output = fixture
+        .agd()
+        .args(["--json", "verify", "HEAD"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let report: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(report["status"], "mismatch");
+    assert_eq!(report["expected_patch_sha256"], patch_hash);
+    assert_ne!(report["actual_patch_sha256"], patch_hash);
 }
 
 #[test]
