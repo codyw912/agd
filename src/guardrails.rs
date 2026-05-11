@@ -8,11 +8,16 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
+pub(crate) const PROTECTED_BRANCH_HOOK_MESSAGE: &str = "AGD: commits on protected branch";
+pub(crate) const PROTECTED_BRANCH_HOOK_HINT: &str =
+    "AGD: create an agent branch first: git switch -c agent/<name>";
+
 pub fn install(paths: &AgdPaths, workspace_path: &Path) -> Result<()> {
     let deny_signer = install_deny_signer(paths)?;
     configure_identity(workspace_path)?;
     configure_signing_denial(workspace_path, &deny_signer)?;
     configure_push_denial(workspace_path)?;
+    install_pre_commit_hook(workspace_path)?;
     install_pre_push_hook(workspace_path)?;
     Ok(())
 }
@@ -77,6 +82,18 @@ fn configure_push_denial(workspace_path: &Path) -> Result<()> {
             "agd-deny://push-disabled",
         ],
     )
+}
+
+fn install_pre_commit_hook(workspace_path: &Path) -> Result<()> {
+    let hook_path = workspace_path.join(".git/hooks/pre-commit");
+    fs::write(
+        &hook_path,
+        format!(
+            "#!/bin/sh\nbranch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)\ncase \"$branch\" in\n  main|master|trunk|develop|stable|production|prod|release/*|stable/*|production/*|prod/*)\n    echo \"{PROTECTED_BRANCH_HOOK_MESSAGE} '$branch' are disabled.\" >&2\n    echo '{PROTECTED_BRANCH_HOOK_HINT}' >&2\n    exit 1\n    ;;\nesac\nexit 0\n"
+        ),
+    )
+    .with_context(|| format!("write {}", hook_path.display()))?;
+    make_executable(&hook_path)
 }
 
 fn install_pre_push_hook(workspace_path: &Path) -> Result<()> {

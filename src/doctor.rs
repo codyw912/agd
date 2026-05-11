@@ -227,6 +227,7 @@ fn checks(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Vec<Check> 
         &project.human_checkout,
         &workspace.path,
     ));
+    checks.push(pre_commit_hook_check(&workspace.path));
     checks.push(pre_push_hook_check(&workspace.path));
     checks.push(git_state_check("human git state", &project.human_checkout));
     checks.push(git_state_check("workspace git state", &workspace.path));
@@ -435,6 +436,29 @@ fn git_lfs_status() -> &'static str {
         Ok(output) if output.status.success() => "git-lfs available",
         _ => "git-lfs unavailable",
     }
+}
+
+fn pre_commit_hook_check(workspace: &Path) -> Check {
+    let hook = workspace.join(".git/hooks/pre-commit");
+    if !hook.exists() {
+        return fail(
+            "protected branch hook",
+            format!("missing {}", hook.display()),
+        );
+    }
+
+    match fs::read_to_string(&hook) {
+        Ok(contents) if protected_branch_hook_is_current(&contents) => {
+            ok("protected branch hook", "")
+        }
+        Ok(_) => fail("protected branch hook", format!("stale {}", hook.display())),
+        Err(error) => fail("protected branch hook", error.to_string()),
+    }
+}
+
+fn protected_branch_hook_is_current(contents: &str) -> bool {
+    contents.contains(guardrails::PROTECTED_BRANCH_HOOK_MESSAGE)
+        && contents.contains(guardrails::PROTECTED_BRANCH_HOOK_HINT)
 }
 
 fn pre_push_hook_check(workspace: &Path) -> Check {
