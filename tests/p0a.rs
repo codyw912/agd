@@ -324,6 +324,7 @@ fn agent_commit_uses_local_agent_identity_and_unsigned_commit() {
         .success();
     let workspace = fixture.agd_path();
 
+    fixture.git_in(&workspace, ["switch", "-c", "agent/identity"]);
     fixture.write_file(&workspace, "agent.txt", "agent work\n");
     fixture.git_in(&workspace, ["add", "agent.txt"]);
     fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
@@ -344,6 +345,7 @@ fn explicit_agent_signing_is_denied_and_logged() {
         .success();
     let workspace = fixture.agd_path();
 
+    fixture.git_in(&workspace, ["switch", "-c", "agent/signing-denied"]);
     fixture.write_file(&workspace, "signed.txt", "signed work\n");
     fixture.git_in(&workspace, ["add", "signed.txt"]);
     let output = fixture.git_fails(&workspace, ["commit", "-S", "-m", "signed work"]);
@@ -482,6 +484,43 @@ fn shell_enters_default_workspace_with_agd_environment() {
     assert!(output.contains("AGD_WORKSPACE=1\n"));
     assert!(output.contains(&format!("AGD_PROJECT_ID={}\n", fixture.project_id())));
     assert!(output.contains("AGD_WORKSPACE_ID=default\n"));
+}
+
+#[test]
+fn agent_workspace_blocks_commits_on_protected_branches() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.write_file(&workspace, "main.txt", "do not commit on main\n");
+    fixture.git_in(&workspace, ["add", "main.txt"]);
+    let output = fixture.git_fails(&workspace, ["commit", "-m", "main work"]);
+    assert!(output.contains("AGD: commits on protected branch 'main' are disabled"));
+    assert!(output.contains("git switch -c agent/"));
+}
+
+#[test]
+fn agent_workspace_allows_commits_on_agent_branches() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/protected-ok"]);
+    fixture.write_file(&workspace, "agent.txt", "commit on agent branch\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
 }
 
 #[test]
@@ -1788,7 +1827,10 @@ fn sync_refuses_dirty_or_diverged_state() {
     let workspace = diverged.agd_path();
     diverged.write_file(&workspace, "workspace-main.txt", "workspace main\n");
     diverged.git_in(&workspace, ["add", "workspace-main.txt"]);
-    diverged.git_in(&workspace, ["commit", "-m", "workspace main update"]);
+    diverged.git_in(
+        &workspace,
+        ["commit", "--no-verify", "-m", "workspace main update"],
+    );
     diverged.write_file(&diverged.human, "human-main.txt", "human main\n");
     diverged.git(["add", "human-main.txt"]);
     diverged.git(["commit", "-m", "human main update"]);
@@ -2337,6 +2379,31 @@ fn doctor_detects_missing_pre_push_hook() {
 }
 
 #[test]
+fn doctor_detects_missing_protected_branch_hook() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fs::remove_file(workspace.join(".git/hooks/pre-commit")).expect("remove pre-commit hook");
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail protected branch hook"))
+        .stdout(predicate::str::contains("missing"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
 fn doctor_detects_workspace_object_alternates() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -2731,6 +2798,7 @@ fn doctor_repair_restores_workspace_guardrails() {
             fixture.human.to_str().unwrap(),
         ],
     );
+    fs::remove_file(workspace.join(".git/hooks/pre-commit")).expect("remove pre-commit hook");
     fs::remove_file(workspace.join(".git/hooks/pre-push")).expect("remove pre-push hook");
 
     fixture
@@ -2750,6 +2818,7 @@ fn doctor_repair_restores_workspace_guardrails() {
         .stdout(predicate::str::contains("ok  signing disabled"))
         .stdout(predicate::str::contains("ok  deny signer"))
         .stdout(predicate::str::contains("ok  push disabled"))
+        .stdout(predicate::str::contains("ok  protected branch hook"))
         .stdout(predicate::str::contains("ok  pre-push hook"));
 
     let signing = fixture.git_stdout(&workspace, ["config", "commit.gpgsign"]);
@@ -2758,6 +2827,7 @@ fn doctor_repair_restores_workspace_guardrails() {
     assert!(std::path::Path::new(deny_signer.trim()).exists());
     let pushurl = fixture.git_stdout(&workspace, ["remote", "get-url", "--push", "origin"]);
     assert_eq!(pushurl.trim(), "agd-deny://push-disabled");
+    assert!(workspace.join(".git/hooks/pre-commit").exists());
     assert!(workspace.join(".git/hooks/pre-push").exists());
 }
 
