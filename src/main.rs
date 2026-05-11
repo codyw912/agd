@@ -247,7 +247,12 @@ fn main() -> Result<()> {
                 if branch.is_some() || preserve || merge {
                     bail!("bless --abort cannot be combined with branch adoption options");
                 }
-                adoption::abort(context.project())?;
+                let result = adoption::abort(context.project())?;
+                if json {
+                    json_output::print(&result)?;
+                } else {
+                    println!("Aborted bless operation");
+                }
                 return Ok(());
             }
             let Some(branch) = branch else {
