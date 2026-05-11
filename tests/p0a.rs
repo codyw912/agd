@@ -1740,6 +1740,30 @@ fn discard_deletes_clean_agent_branch() {
 }
 
 #[test]
+fn json_discard_outputs_deleted_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/discard-json"]);
+    fixture.write_file(&workspace, "discard-json.txt", "discard me\n");
+    fixture.git_in(&workspace, ["add", "discard-json.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "discard json"]);
+    fixture.git_in(&workspace, ["switch", "main"]);
+
+    let response = fixture.agd_json(["--json", "discard", "agent/discard-json"], &fixture.human);
+    assert_eq!(response["branch"], "agent/discard-json");
+    assert_eq!(response["workspace_id"], "default");
+    fixture.git_fails(&workspace, ["rev-parse", "--verify", "agent/discard-json"]);
+}
+
+#[test]
 fn discard_refuses_dirty_agent_workspace() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

@@ -175,7 +175,12 @@ fn main() -> Result<()> {
         Some(Command::Discard { branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            cleanup::discard(&paths, context.project(), &branch)?;
+            let result = cleanup::discard(&paths, context.project(), &branch)?;
+            if json {
+                json_output::print(&result)?;
+            } else {
+                println!("Discarded {}", result.branch);
+            }
         }
         Some(Command::ResetWorkspace) => {
             let cwd = std::env::current_dir()?;
