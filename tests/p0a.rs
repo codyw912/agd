@@ -1752,6 +1752,10 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
     assert!(gh_args.contains("Agent branch: agent/pr-test"));
     assert!(gh_args.contains(&format!("Base commit: {}", base_commit.trim())));
     assert!(gh_args.contains(&format!("Agent tip: {}", agent_tip.trim())));
+    assert!(gh_args.contains("## Provenance"));
+    assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-test"));
+    assert!(gh_args.contains(&format!("AGD-Agent-Base: {}", base_commit.trim())));
+    assert!(gh_args.contains(&format!("AGD-Agent-Tip: {}", agent_tip.trim())));
     assert!(gh_args.contains("agent PR work"));
     assert!(gh_args.contains("pr.txt"));
 }
