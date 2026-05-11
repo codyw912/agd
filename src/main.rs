@@ -240,7 +240,12 @@ fn main() -> Result<()> {
                 if abort || branch.is_some() || preserve || merge {
                     bail!("bless --continue cannot be combined with other bless options");
                 }
-                adoption::continue_bless(&paths, context.project())?;
+                let result = adoption::continue_bless(&paths, context.project())?;
+                if json {
+                    json_output::print(&result)?;
+                } else {
+                    println!("Continued bless operation");
+                }
                 return Ok(());
             }
             if abort {

@@ -19,6 +19,13 @@ pub struct BlessAbortResult {
     pub status: &'static str,
 }
 
+#[derive(Debug, Serialize)]
+pub struct BlessContinueResult {
+    pub status: &'static str,
+    pub branch: String,
+    pub adoption: String,
+}
+
 pub fn bless(paths: &AgdPaths, project: &Project, branch: &str, mode: AdoptionMode) -> Result<()> {
     let prepared = prepare(paths, project, branch)?;
     match mode {
@@ -34,7 +41,7 @@ pub fn abort(project: &Project) -> Result<BlessAbortResult> {
     Ok(BlessAbortResult { status: "aborted" })
 }
 
-pub fn continue_bless(paths: &AgdPaths, project: &Project) -> Result<()> {
+pub fn continue_bless(paths: &AgdPaths, project: &Project) -> Result<BlessContinueResult> {
     let state = read_bless_state(project)?;
     if state.adoption != "squash" {
         anyhow::bail!("only squash bless operations can be continued");
@@ -50,8 +57,11 @@ pub fn continue_bless(paths: &AgdPaths, project: &Project) -> Result<()> {
     );
     commit_squash(project, &state.branch, trailers)?;
     remove_bless_state(project)?;
-    println!("Continued bless operation");
-    Ok(())
+    Ok(BlessContinueResult {
+        status: "continued",
+        branch: state.branch,
+        adoption: state.adoption,
+    })
 }
 
 struct PreparedAdoption<'a> {

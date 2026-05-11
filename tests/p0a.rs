@@ -905,6 +905,56 @@ fn bless_continue_commits_resolved_squash_conflict() {
 }
 
 #[test]
+fn json_bless_continue_outputs_continued_status() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/conflict"]);
+    fixture.write_file(&workspace, "README.md", "agent change\n");
+    fixture.git_in(&workspace, ["add", "README.md"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent conflict"]);
+
+    fixture.write_file(&fixture.human, "README.md", "human change\n");
+    fixture.git(["add", "README.md"]);
+    fixture.git(["commit", "-m", "human conflict"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/conflict"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agd bless --continue"));
+
+    let bless_state = fixture.human.join(".git/agd/bless.json");
+    assert!(bless_state.exists());
+
+    fixture.write_file(&fixture.human, "README.md", "resolved change\n");
+    fixture.git(["add", "README.md"]);
+
+    let response = fixture.agd_json(["--json", "bless", "--continue"], &fixture.human);
+    assert_eq!(response["status"], "continued");
+    assert_eq!(response["branch"], "agent/conflict");
+    assert_eq!(response["adoption"], "squash");
+
+    let status = fixture.git_stdout(&fixture.human, ["status", "--porcelain"]);
+    assert!(status.trim().is_empty());
+    let subject = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%s"]);
+    assert!(subject.contains("Adopt agent/conflict"));
+    let readme = fs::read_to_string(fixture.human.join("README.md")).expect("read README");
+    assert_eq!(readme, "resolved change\n");
+    assert!(!bless_state.exists());
+}
+
+#[test]
 fn bless_preserve_replays_agent_commits_with_human_signatures() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
