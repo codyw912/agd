@@ -1827,6 +1827,34 @@ fn reset_workspace_recreates_clean_managed_clone() {
 }
 
 #[test]
+fn json_reset_workspace_outputs_recreated_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/reset-json"]);
+    fixture.write_file(&workspace, "reset-json.txt", "reset me\n");
+    fixture.git_in(&workspace, ["add", "reset-json.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "reset json"]);
+    fixture.git_in(&workspace, ["switch", "main"]);
+
+    let response = fixture.agd_json(["--json", "reset-workspace"], &fixture.human);
+    assert_eq!(response["workspace_id"], "default");
+    assert_eq!(
+        response["path"].as_str().expect("workspace path"),
+        workspace.to_str().expect("workspace path utf-8")
+    );
+    assert!(workspace.join(".git").exists());
+    fixture.git_fails(&workspace, ["rev-parse", "--verify", "agent/reset-json"]);
+}
+
+#[test]
 fn doctor_reports_healthy_workspace() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
