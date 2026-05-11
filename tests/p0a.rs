@@ -1309,6 +1309,41 @@ fn json_branches_and_files_outputs_are_machine_readable() {
 }
 
 #[test]
+fn json_log_outputs_branch_commits() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+    fixture.write_file(&workspace, "agent.txt", "two\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent two"]);
+
+    let log = fixture.agd_json(["--json", "log", "agent/refactor-auth"], &fixture.human);
+    assert_eq!(log["branch"], "agent/refactor-auth");
+    assert_eq!(log["commits"].as_array().expect("commits").len(), 2);
+    assert_eq!(log["commits"][0]["subject"], "agent two");
+    assert_eq!(log["commits"][1]["subject"], "agent one");
+    assert!(log["commits"][0]["hash"].as_str().expect("hash").len() >= 40);
+    assert_eq!(
+        log["commits"][0]["short_hash"]
+            .as_str()
+            .expect("short hash")
+            .len(),
+        7
+    );
+}
+
+#[test]
 fn review_commands_default_to_current_agent_branch() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

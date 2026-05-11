@@ -1,6 +1,7 @@
 use crate::git;
 use crate::project::Project;
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::path::Path;
 
 pub fn branches(project: &Project) -> Result<()> {
@@ -24,18 +25,49 @@ pub fn branch_names(project: &Project) -> Result<Vec<String>> {
 }
 
 pub fn log(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
+    let log = commit_log(project, branch, cwd)?;
+    for commit in log.commits {
+        println!("{} {}", commit.short_hash, commit.subject);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct CommitLog {
+    pub branch: String,
+    pub commits: Vec<CommitLogEntry>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CommitLogEntry {
+    pub hash: String,
+    pub short_hash: String,
+    pub subject: String,
+}
+
+pub fn commit_log(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<CommitLog> {
     let workspace = default_workspace(project)?;
     let branch = resolve_branch(project, branch, cwd)?;
-    let output = git::stdout(
+    let hashes = git::stdout(
         &workspace.path,
-        [
-            "log",
-            "--oneline",
-            &format!("{}..{branch}", project.default_target),
-        ],
+        ["rev-list", &format!("{}..{branch}", project.default_target)],
     )?;
-    print!("{output}");
-    Ok(())
+    let commits = hashes
+        .lines()
+        .map(|hash| commit_log_entry(&workspace.path, hash))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(CommitLog { branch, commits })
+}
+
+fn commit_log_entry(repo: &Path, hash: &str) -> Result<CommitLogEntry> {
+    let full_hash = git::stdout(repo, ["show", "-s", "--format=%H", hash])?;
+    let short_hash = git::stdout(repo, ["show", "-s", "--format=%h", hash])?;
+    let subject = git::stdout(repo, ["show", "-s", "--format=%s", hash])?;
+    Ok(CommitLogEntry {
+        hash: full_hash.trim().to_string(),
+        short_hash: short_hash.trim().to_string(),
+        subject: subject.trim().to_string(),
+    })
 }
 
 pub fn diff(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
