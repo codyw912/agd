@@ -62,6 +62,19 @@ pub fn print_report(report: &DoctorReport) -> Result<()> {
 }
 
 pub fn metadata_failure_report(paths: &AgdPaths, cwd: &Path) -> Option<DoctorReport> {
+    let detail = human_marker_metadata_failure(paths, cwd)
+        .or_else(|| workspace_marker_metadata_failure(paths, cwd))?;
+    Some(DoctorReport {
+        checks: vec![DoctorCheck {
+            status: "fail",
+            name: "project metadata",
+            detail,
+        }],
+        failed: true,
+    })
+}
+
+fn human_marker_metadata_failure(paths: &AgdPaths, cwd: &Path) -> Option<String> {
     let human_checkout = git::stdout(cwd, ["rev-parse", "--show-toplevel"]).ok()?;
     let human_checkout = PathBuf::from(human_checkout.trim());
     let git_dir = git::stdout(&human_checkout, ["rev-parse", "--git-dir"]).ok()?;
@@ -72,15 +85,12 @@ pub fn metadata_failure_report(paths: &AgdPaths, cwd: &Path) -> Option<DoctorRep
         return None;
     }
 
-    let detail = project_metadata_failure_detail(paths, &marker_path)?;
-    Some(DoctorReport {
-        checks: vec![DoctorCheck {
-            status: "fail",
-            name: "project metadata",
-            detail,
-        }],
-        failed: true,
-    })
+    project_metadata_failure_detail(paths, &marker_path)
+}
+
+fn workspace_marker_metadata_failure(paths: &AgdPaths, cwd: &Path) -> Option<String> {
+    let marker_path = find_workspace_marker(cwd)?;
+    project_metadata_failure_detail(paths, &marker_path)
 }
 
 fn project_metadata_failure_detail(paths: &AgdPaths, marker_path: &Path) -> Option<String> {
@@ -306,6 +316,16 @@ fn resolve_git_dir(repo: &Path, git_dir: &str) -> PathBuf {
     } else {
         repo.join(path)
     }
+}
+
+fn find_workspace_marker(cwd: &Path) -> Option<PathBuf> {
+    for ancestor in cwd.ancestors() {
+        let marker = ancestor.join(".agd/workspace.json");
+        if marker.exists() {
+            return Some(marker);
+        }
+    }
+    None
 }
 
 fn human_checkout_path_check(context: &ProjectContext, cwd: &Path) -> Check {

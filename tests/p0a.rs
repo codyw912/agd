@@ -3267,6 +3267,36 @@ fn doctor_reports_missing_project_metadata() {
 }
 
 #[test]
+fn doctor_reports_missing_project_metadata_from_agent_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    let metadata = fixture
+        .agd_home
+        .join("projects")
+        .join(fixture.project_id())
+        .join("project.json");
+    fs::remove_file(metadata).expect("remove project metadata");
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&workspace)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail project metadata"))
+        .stdout(predicate::str::contains("missing"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
 fn doctor_reports_missing_workspace_marker() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
