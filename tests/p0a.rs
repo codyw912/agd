@@ -266,6 +266,26 @@ fn init_writes_project_metadata_and_human_marker() {
 }
 
 #[test]
+fn init_refuses_dirty_human_checkout() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.write_file(&fixture.human, "dirty.txt", "not committed\n");
+
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "human checkout has uncommitted changes",
+        ));
+
+    assert!(!fixture.human.join(".git/agd/project.json").exists());
+    assert!(!fixture.agd_home.join("projects").exists());
+}
+
+#[test]
 fn json_init_outputs_project_and_workspace_metadata() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
