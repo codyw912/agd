@@ -131,7 +131,12 @@ fn main() -> Result<()> {
         Some(Command::Log { branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            review::log(context.project(), branch.as_deref(), &cwd)?;
+            if json {
+                let log = review::commit_log(context.project(), branch.as_deref(), &cwd)?;
+                json_output::print(&log)?;
+            } else {
+                review::log(context.project(), branch.as_deref(), &cwd)?;
+            }
         }
         Some(Command::Diff { branch }) => {
             let cwd = std::env::current_dir()?;
