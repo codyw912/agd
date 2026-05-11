@@ -1657,6 +1657,7 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
     fixture.git(["init", "--bare", remote]);
     fixture.git(["remote", "add", "origin", remote]);
     fixture.git(["push", "-u", "origin", "main"]);
+    let base_commit = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
     fixture
         .agd()
         .arg("init")
@@ -1693,6 +1694,7 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
     assert!(gh_args.contains("--head\nagent/pr-test\n"));
     assert!(gh_args.contains("--title\nagent/pr-test\n"));
     assert!(gh_args.contains("Agent branch: agent/pr-test"));
+    assert!(gh_args.contains(&format!("Base commit: {}", base_commit.trim())));
     assert!(gh_args.contains("agent PR work"));
     assert!(gh_args.contains("pr.txt"));
 }
