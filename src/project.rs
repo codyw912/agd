@@ -74,6 +74,8 @@ pub fn init_project(paths: &AgdPaths, cwd: &Path) -> Result<Project> {
         return Ok(project);
     }
 
+    require_clean_human_checkout(&human_checkout)?;
+
     let project_id = format!("project_{}", Uuid::new_v4().simple());
     let now = OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -110,6 +112,14 @@ pub fn init_project(paths: &AgdPaths, cwd: &Path) -> Result<Project> {
     )?;
 
     Ok(project)
+}
+
+fn require_clean_human_checkout(human_checkout: &Path) -> Result<()> {
+    let status = git::stdout(human_checkout, ["status", "--porcelain"])?;
+    if !status.trim().is_empty() {
+        anyhow::bail!("human checkout has uncommitted changes");
+    }
+    Ok(())
 }
 
 pub fn save_project(paths: &AgdPaths, project: &Project) -> Result<()> {
