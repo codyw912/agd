@@ -3,13 +3,17 @@ use crate::project::Project;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::ffi::OsString;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Command;
 
 #[derive(Debug, Serialize)]
 pub struct PullRequestResult {
     pub branch: String,
-    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_step: Option<String>,
 }
 
 pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullRequestResult> {
@@ -30,7 +34,7 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullR
     git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
 
     let body = pr_body(project, workspace, &branch)?;
-    let output = Command::new("gh")
+    let output = match Command::new("gh")
         .args([
             "pr",
             "create",
@@ -45,7 +49,17 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullR
         ])
         .current_dir(&project.human_checkout)
         .output()
-        .context("run gh")?;
+    {
+        Ok(output) => output,
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            return Ok(PullRequestResult {
+                branch: branch.clone(),
+                url: None,
+                next_step: Some(next_step(project, &branch)),
+            });
+        }
+        Err(error) => return Err(error).context("run gh"),
+    };
     if !output.status.success() {
         anyhow::bail!(
             "gh pr create failed: {}",
@@ -55,8 +69,16 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullR
     let url = String::from_utf8(output.stdout).context("gh output was not utf-8")?;
     Ok(PullRequestResult {
         branch,
-        url: url.trim().to_string(),
+        url: Some(url.trim().to_string()),
+        next_step: None,
     })
+}
+
+fn next_step(project: &Project, branch: &str) -> String {
+    format!(
+        "Pushed {branch} to origin. Open a pull request from {branch} into {}.",
+        project.default_target
+    )
 }
 
 fn pr_body(
