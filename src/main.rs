@@ -141,7 +141,12 @@ fn main() -> Result<()> {
         Some(Command::Pr { branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            pull_request::open(context.project(), branch.as_deref(), &cwd)?;
+            let result = pull_request::open(context.project(), branch.as_deref(), &cwd)?;
+            if json {
+                json_output::print(&result)?;
+            } else {
+                println!("{}", result.url);
+            }
         }
         Some(Command::Verify { commit }) => {
             let cwd = std::env::current_dir()?;
