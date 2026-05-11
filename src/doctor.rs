@@ -230,6 +230,7 @@ fn checks(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Vec<Check> 
     checks.push(pre_push_hook_check(&workspace.path));
     checks.push(git_state_check("human git state", &project.human_checkout));
     checks.push(git_state_check("workspace git state", &workspace.path));
+    checks.push(agd_bless_state_check(&project.human_checkout));
     checks.push(agd_lock_check(paths, project));
     checks.push(dirty_check("human dirty", &project.human_checkout));
     checks.push(dirty_check("workspace dirty", &workspace.path));
@@ -510,6 +511,21 @@ fn git_state_check(name: &'static str, repo: &Path) -> Check {
         ok(name, "")
     } else {
         fail(name, present.join(", "))
+    }
+}
+
+fn agd_bless_state_check(repo: &Path) -> Check {
+    let state_path = match git::stdout(repo, ["rev-parse", "--git-path", "agd/bless.json"]) {
+        Ok(path) => repo.join(path.trim()),
+        Err(error) => return fail("AGD bless state", error.to_string()),
+    };
+    if state_path.exists() {
+        fail(
+            "AGD bless state",
+            "run `agd bless --continue` after resolving conflicts, or `agd bless --abort`",
+        )
+    } else {
+        ok("AGD bless state", "")
     }
 }
 

@@ -2500,6 +2500,48 @@ fn doctor_detects_incomplete_git_state() {
 }
 
 #[test]
+fn doctor_detects_incomplete_agd_bless_state() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/conflict"]);
+    fixture.write_file(&workspace, "README.md", "agent change\n");
+    fixture.git_in(&workspace, ["add", "README.md"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent conflict"]);
+
+    fixture.write_file(&fixture.human, "README.md", "human change\n");
+    fixture.git(["add", "README.md"]);
+    fixture.git(["commit", "-m", "human conflict"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/conflict"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agd bless --continue"));
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail AGD bless state"))
+        .stdout(predicate::str::contains("agd bless --continue"))
+        .stdout(predicate::str::contains("agd bless --abort"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
 fn doctor_detects_existing_agd_operation_lock() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
