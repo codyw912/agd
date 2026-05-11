@@ -1796,6 +1796,54 @@ fn sync_does_not_touch_agent_branches() {
 }
 
 #[test]
+fn sync_updates_main_and_non_main_default_target() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.git(["switch", "-c", "develop"]);
+    fixture.write_file(&fixture.human, "develop.txt", "develop base\n");
+    fixture.git(["add", "develop.txt"]);
+    fixture.git(["commit", "-m", "develop base"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git(["switch", "main"]);
+    fixture.write_file(&fixture.human, "main.txt", "main update\n");
+    fixture.git(["add", "main.txt"]);
+    fixture.git(["commit", "-m", "main update"]);
+    let human_main = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+
+    fixture.git(["switch", "develop"]);
+    fixture.write_file(&fixture.human, "develop.txt", "develop update\n");
+    fixture.git(["add", "develop.txt"]);
+    fixture.git(["commit", "-m", "develop update"]);
+    let human_develop = fixture.git_stdout(&fixture.human, ["rev-parse", "develop"]);
+
+    let response = fixture.agd_json(["--json", "sync"], &fixture.human);
+    assert_eq!(response["target"], "develop");
+    assert_eq!(response["updates"].as_array().expect("updates").len(), 2);
+    assert!(response["updates"]
+        .as_array()
+        .expect("updates")
+        .iter()
+        .any(|update| update["target"] == "main"));
+    assert!(response["updates"]
+        .as_array()
+        .expect("updates")
+        .iter()
+        .any(|update| update["target"] == "develop"));
+
+    let workspace_main = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+    assert_eq!(workspace_main.trim(), human_main.trim());
+    let workspace_develop = fixture.git_stdout(&workspace, ["rev-parse", "develop"]);
+    assert_eq!(workspace_develop.trim(), human_develop.trim());
+}
+
+#[test]
 fn sync_refuses_dirty_or_diverged_state() {
     let dirty_human = Fixture::new();
     dirty_human.init_human_repo();
