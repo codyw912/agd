@@ -4,10 +4,17 @@ use crate::paths::AgdPaths;
 use crate::project::{self, Project};
 use crate::workspace;
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::fs;
 use std::path::Path;
 
-pub fn discard(paths: &AgdPaths, project: &Project, branch: &str) -> Result<()> {
+#[derive(Debug, Serialize)]
+pub struct DiscardResult {
+    pub branch: String,
+    pub workspace_id: String,
+}
+
+pub fn discard(paths: &AgdPaths, project: &Project, branch: &str) -> Result<DiscardResult> {
     let workspace = default_workspace(project)?;
     require_clean(&workspace.path, "agent workspace")?;
     if branch == project.default_target {
@@ -15,8 +22,10 @@ pub fn discard(paths: &AgdPaths, project: &Project, branch: &str) -> Result<()> 
     }
     let _lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "discard")?;
     git::run(&workspace.path, ["branch", "-D", branch])?;
-    println!("Discarded {branch}");
-    Ok(())
+    Ok(DiscardResult {
+        branch: branch.to_string(),
+        workspace_id: workspace.id.clone(),
+    })
 }
 
 pub fn reset_workspace(paths: &AgdPaths, project: &Project) -> Result<()> {
