@@ -185,7 +185,13 @@ fn main() -> Result<()> {
         Some(Command::ResetWorkspace) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            cleanup::reset_workspace(&paths, context.project())?;
+            let result = cleanup::reset_workspace(&paths, context.project())?;
+            if json {
+                json_output::print(&result)?;
+            } else {
+                println!("Reset workspace");
+                println!("  {}", result.path.display());
+            }
         }
         Some(Command::Workspace { command }) => {
             let cwd = std::env::current_dir()?;

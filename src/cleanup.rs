@@ -6,12 +6,18 @@ use crate::workspace;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize)]
 pub struct DiscardResult {
     pub branch: String,
     pub workspace_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResetWorkspaceResult {
+    pub workspace_id: String,
+    pub path: PathBuf,
 }
 
 pub fn discard(paths: &AgdPaths, project: &Project, branch: &str) -> Result<DiscardResult> {
@@ -28,9 +34,10 @@ pub fn discard(paths: &AgdPaths, project: &Project, branch: &str) -> Result<Disc
     })
 }
 
-pub fn reset_workspace(paths: &AgdPaths, project: &Project) -> Result<()> {
+pub fn reset_workspace(paths: &AgdPaths, project: &Project) -> Result<ResetWorkspaceResult> {
     let mut project = project.clone();
     let workspace = default_workspace(&project)?;
+    let workspace_id = workspace.id.clone();
     require_clean(&workspace.path, "agent workspace")?;
     let workspace_path = workspace.path.clone();
     let _lock =
@@ -41,9 +48,10 @@ pub fn reset_workspace(paths: &AgdPaths, project: &Project) -> Result<()> {
     let recreated = workspace::ensure_default_workspace(paths, &mut project)?;
     project::save_project(paths, &project)?;
 
-    println!("Reset workspace");
-    println!("  {}", recreated.display());
-    Ok(())
+    Ok(ResetWorkspaceResult {
+        workspace_id,
+        path: recreated,
+    })
 }
 
 fn default_workspace(project: &Project) -> Result<&crate::project::Workspace> {
