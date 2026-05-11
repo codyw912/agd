@@ -193,6 +193,7 @@ fn bless_preserve(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<
     }
 
     for commit in commits {
+        let patch_hash = provenance::adopted_patch_sha256(&project.human_checkout, &commit)?;
         git::run(
             &project.human_checkout,
             ["cherry-pick", "--no-commit", &commit],
@@ -218,6 +219,8 @@ fn bless_preserve(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<
                 OsString::from(format!("AGD-Agent-Commit={commit}")),
                 OsString::from("--trailer"),
                 OsString::from("AGD-Adoption=preserve"),
+                OsString::from("--trailer"),
+                OsString::from(format!("AGD-Patch-SHA256={patch_hash}")),
             ],
         )?;
     }

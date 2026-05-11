@@ -1152,6 +1152,45 @@ fn bless_preserve_replays_agent_commits_with_human_signatures() {
 }
 
 #[test]
+fn verify_accepts_preserve_adoption_commits() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "one.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "one.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+    fixture.write_file(&workspace, "two.txt", "two\n");
+    fixture.git_in(&workspace, ["add", "two.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent two"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/refactor-auth", "--preserve"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    for commit in ["HEAD", "HEAD~1"] {
+        fixture
+            .agd()
+            .args(["verify", commit])
+            .current_dir(&fixture.human)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("verified AGD patch"));
+    }
+}
+
+#[test]
 fn bless_merge_creates_signed_merge_commit_and_preserves_agent_commits() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
