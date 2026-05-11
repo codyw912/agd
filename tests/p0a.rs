@@ -1472,6 +1472,44 @@ fn branches_omits_main_mirror_when_default_target_is_not_main() {
 }
 
 #[test]
+fn review_commands_reject_main_mirror_when_default_target_is_not_main() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.git(["switch", "-c", "develop"]);
+    fixture.write_file(&fixture.human, "develop.txt", "develop base\n");
+    fixture.git(["add", "develop.txt"]);
+    fixture.git(["commit", "-m", "develop base"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture.git(["switch", "main"]);
+    fixture.write_file(&fixture.human, "main.txt", "main update\n");
+    fixture.git(["add", "main.txt"]);
+    fixture.git(["commit", "-m", "main update"]);
+    fixture.git(["switch", "develop"]);
+    fixture
+        .agd()
+        .arg("sync")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    for command in ["log", "diff", "files"] {
+        fixture
+            .agd()
+            .args([command, "main"])
+            .current_dir(&fixture.human)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("agent branch is required"));
+    }
+}
+
+#[test]
 fn review_commands_show_branch_changes() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
