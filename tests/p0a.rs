@@ -673,6 +673,35 @@ fn bless_squashes_agent_branch_into_one_human_commit() {
 }
 
 #[test]
+fn json_bless_outputs_blessed_status() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+
+    let response = fixture.agd_json(["--json", "bless", "agent/refactor-auth"], &fixture.human);
+    assert_eq!(response["status"], "blessed");
+    assert_eq!(response["branch"], "agent/refactor-auth");
+    assert_eq!(response["adoption"], "squash");
+
+    let status = fixture.git_stdout(&fixture.human, ["status", "--porcelain"]);
+    assert!(status.trim().is_empty());
+    let subject = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%s"]);
+    assert!(subject.contains("Adopt agent/refactor-auth"));
+}
+
+#[test]
 fn verify_reports_missing_agd_metadata_for_plain_commit() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

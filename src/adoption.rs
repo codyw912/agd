@@ -26,7 +26,19 @@ pub struct BlessContinueResult {
     pub adoption: String,
 }
 
-pub fn bless(paths: &AgdPaths, project: &Project, branch: &str, mode: AdoptionMode) -> Result<()> {
+#[derive(Debug, Serialize)]
+pub struct BlessResult {
+    pub status: &'static str,
+    pub branch: String,
+    pub adoption: &'static str,
+}
+
+pub fn bless(
+    paths: &AgdPaths,
+    project: &Project,
+    branch: &str,
+    mode: AdoptionMode,
+) -> Result<BlessResult> {
     let prepared = prepare(paths, project, branch)?;
     match mode {
         AdoptionMode::Squash => bless_squash(project, &prepared),
@@ -118,7 +130,7 @@ fn prepare<'a>(
     })
 }
 
-fn bless_squash(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<()> {
+fn bless_squash(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<BlessResult> {
     write_bless_state(project, &BlessState::from_prepared(prepared, "squash"))?;
     if let Err(error) = git::run(
         &project.human_checkout,
@@ -133,8 +145,7 @@ fn bless_squash(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<()
     commit_squash(project, prepared.branch, trailers)?;
     remove_bless_state(project)?;
 
-    println!("Blessed {}", prepared.branch);
-    Ok(())
+    Ok(bless_result(prepared.branch, "squash"))
 }
 
 fn commit_squash(project: &Project, branch: &str, trailers: String) -> Result<()> {
@@ -152,7 +163,7 @@ fn commit_squash(project: &Project, branch: &str, trailers: String) -> Result<()
     Ok(())
 }
 
-fn bless_merge(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<()> {
+fn bless_merge(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<BlessResult> {
     let trailers = trailers(project, prepared, "merge");
     git::run(
         &project.human_checkout,
@@ -168,11 +179,10 @@ fn bless_merge(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<()>
         ],
     )?;
 
-    println!("Merged {}", prepared.branch);
-    Ok(())
+    Ok(bless_result(prepared.branch, "merge"))
 }
 
-fn bless_preserve(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<()> {
+fn bless_preserve(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<BlessResult> {
     let range = format!("{}..{}", project.default_target, prepared.fetched_ref);
     let commits = git::stdout(&project.human_checkout, ["rev-list", "--reverse", &range])?;
     let commits: Vec<_> = commits.lines().map(str::to_string).collect();
@@ -210,8 +220,15 @@ fn bless_preserve(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<
         )?;
     }
 
-    println!("Preserved {}", prepared.branch);
-    Ok(())
+    Ok(bless_result(prepared.branch, "preserve"))
+}
+
+fn bless_result(branch: &str, adoption: &'static str) -> BlessResult {
+    BlessResult {
+        status: "blessed",
+        branch: branch.to_string(),
+        adoption,
+    }
 }
 
 fn trailers(project: &Project, prepared: &PreparedAdoption<'_>, adoption: &str) -> String {

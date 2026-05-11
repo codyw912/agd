@@ -273,7 +273,16 @@ fn main() -> Result<()> {
             } else {
                 adoption::AdoptionMode::Squash
             };
-            adoption::bless(&paths, context.project(), branch.as_str(), mode)?;
+            let result = adoption::bless(&paths, context.project(), branch.as_str(), mode)?;
+            if json {
+                json_output::print(&result)?;
+            } else {
+                match result.adoption {
+                    "merge" => println!("Merged {}", result.branch),
+                    "preserve" => println!("Preserved {}", result.branch),
+                    _ => println!("Blessed {}", result.branch),
+                }
+            }
         }
         Some(Command::DenySigner { _args: _ }) => {
             guardrails::deny_signing(&paths)?;
