@@ -121,8 +121,10 @@ fn pr_body(
     };
 
     Ok(format!(
-        "## Summary\n- Agent branch: {branch}\n- Base branch: {}\n- Base commit: {}\n- Agent tip: {}\n\n## Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Adoption Recommendation\nReview this PR, then adopt with `agd bless {branch}` if it should become signed human history.",
+        "## Summary\n- Agent branch: {branch}\n- Base branch: {}\n- Base commit: {}\n- Agent tip: {}\n\n## Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Provenance\nAGD-Agent-Branch: {branch}\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\n\n## Adoption Recommendation\nReview this PR, then adopt with `agd bless {branch}` if it should become signed human history.",
         project.default_target,
+        base_commit.trim(),
+        agent_tip.trim(),
         base_commit.trim(),
         agent_tip.trim()
     ))
