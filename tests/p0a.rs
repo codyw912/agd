@@ -2429,6 +2429,47 @@ fn json_discard_outputs_deleted_branch() {
 }
 
 #[test]
+fn discard_rejects_main_mirror_when_default_target_is_not_main() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.git(["switch", "-c", "develop"]);
+    fixture.write_file(&fixture.human, "develop.txt", "develop base\n");
+    fixture.git(["add", "develop.txt"]);
+    fixture.git(["commit", "-m", "develop base"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git(["switch", "main"]);
+    fixture.write_file(&fixture.human, "main.txt", "main update\n");
+    fixture.git(["add", "main.txt"]);
+    fixture.git(["commit", "-m", "main update"]);
+    fixture.git(["switch", "develop"]);
+    fixture
+        .agd()
+        .arg("sync")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["discard", "main"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "refusing to discard protected branch",
+        ));
+
+    fixture.git_stdout(&workspace, ["rev-parse", "--verify", "main"]);
+}
+
+#[test]
 fn discard_refuses_dirty_agent_workspace() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
