@@ -110,7 +110,14 @@ fn main() -> Result<()> {
         Some(Command::Handoff { include_untracked }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            handoff::handoff(&paths, context.project(), &include_untracked)?;
+            let result = handoff::handoff(&paths, context.project(), &include_untracked)?;
+            if json {
+                json_output::print(&result)?;
+            } else if result.status == "noop" {
+                println!("No human changes to hand off");
+            } else {
+                println!("Handed off human changes to {}", result.workspace_id);
+            }
         }
         Some(Command::Branches) => {
             let cwd = std::env::current_dir()?;
