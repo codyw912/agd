@@ -166,6 +166,15 @@ impl Fixture {
         std::env::join_paths(paths).expect("join PATH")
     }
 
+    fn git_only_path(&self) -> std::ffi::OsString {
+        let bin_dir = self._tmp.path().join("git-only-bin");
+        fs::create_dir_all(&bin_dir).expect("create git-only bin");
+        let git = find_executable("git");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(git, bin_dir.join("git")).expect("symlink git");
+        std::env::join_paths([bin_dir]).expect("join PATH")
+    }
+
     fn git<const N: usize>(&self, args: [&str; N]) {
         self.git_in(&self.human, args);
     }
@@ -229,6 +238,14 @@ fn make_executable(path: &std::path::Path) {
 
 #[cfg(not(unix))]
 fn make_executable(_path: &std::path::Path) {}
+
+fn find_executable(name: &str) -> std::path::PathBuf {
+    let path = std::env::var_os("PATH").expect("PATH set");
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(name))
+        .find(|candidate| candidate.is_file())
+        .unwrap_or_else(|| panic!("{name} not found in PATH"))
+}
 
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
@@ -1780,6 +1797,46 @@ fn json_pr_outputs_created_pull_request() {
     fixture.git_stdout(
         std::path::Path::new(remote),
         ["rev-parse", "--verify", "refs/heads/agent/pr-json"],
+    );
+}
+
+#[test]
+fn pr_falls_back_to_next_step_when_gh_is_missing() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-no-gh"]);
+    fixture.write_file(&workspace, "pr-no-gh.txt", "agent PR fallback work\n");
+    fixture.git_in(&workspace, ["add", "pr-no-gh.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent PR fallback work"]);
+
+    fixture
+        .agd()
+        .args(["pr", "agent/pr-no-gh"])
+        .env("PATH", fixture.git_only_path())
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Pushed agent/pr-no-gh to origin"))
+        .stdout(predicate::str::contains(
+            "Open a pull request from agent/pr-no-gh into main",
+        ));
+
+    fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["rev-parse", "--verify", "refs/heads/agent/pr-no-gh"],
     );
 }
 

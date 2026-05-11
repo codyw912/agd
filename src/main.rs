@@ -155,8 +155,12 @@ fn main() -> Result<()> {
             let result = pull_request::open(context.project(), branch.as_deref(), &cwd)?;
             if json {
                 json_output::print(&result)?;
+            } else if let Some(url) = result.url {
+                println!("{url}");
+            } else if let Some(next_step) = result.next_step {
+                println!("{next_step}");
             } else {
-                println!("{}", result.url);
+                bail!("pull request result did not include a URL or next step");
             }
         }
         Some(Command::Verify { commit }) => {
