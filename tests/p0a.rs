@@ -1277,6 +1277,50 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
 }
 
 #[test]
+fn json_pr_outputs_created_pull_request() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-json"]);
+    fixture.write_file(&workspace, "pr-json.txt", "agent PR json work\n");
+    fixture.git_in(&workspace, ["add", "pr-json.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent PR json work"]);
+
+    let gh_capture = fixture._tmp.path().join("gh-json-args.txt");
+    let fake_path = fixture.fake_gh_path(&gh_capture);
+    let response = fixture
+        .agd()
+        .args(["--json", "pr", "agent/pr-json"])
+        .env("PATH", fake_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let response: Value = serde_json::from_slice(&response).expect("valid json");
+    assert_eq!(response["branch"], "agent/pr-json");
+    assert_eq!(response["url"], "https://example.test/pr/1");
+
+    fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["rev-parse", "--verify", "refs/heads/agent/pr-json"],
+    );
+}
+
+#[test]
 fn sync_fast_forwards_default_target_from_human_checkout() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

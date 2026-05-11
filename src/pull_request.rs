@@ -1,11 +1,18 @@
 use crate::git;
 use crate::project::Project;
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::ffi::OsString;
 use std::path::Path;
 use std::process::Command;
 
-pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
+#[derive(Debug, Serialize)]
+pub struct PullRequestResult {
+    pub branch: String,
+    pub url: String,
+}
+
+pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullRequestResult> {
     let workspace = default_workspace(project)?;
     let branch = resolve_branch(project, branch, cwd)?;
     let pr_ref = format!("refs/agd/pr/{branch}");
@@ -45,11 +52,11 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
-    print!(
-        "{}",
-        String::from_utf8(output.stdout).context("gh output was not utf-8")?
-    );
-    Ok(())
+    let url = String::from_utf8(output.stdout).context("gh output was not utf-8")?;
+    Ok(PullRequestResult {
+        branch,
+        url: url.trim().to_string(),
+    })
 }
 
 fn pr_body(
