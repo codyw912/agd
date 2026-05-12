@@ -113,14 +113,17 @@ fn main() -> Result<()> {
                 doctor::doctor(&paths, &context, &cwd)?;
             }
         }
-        Some(Command::Sync) => {
+        Some(Command::Sync { rebase }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let result = sync::sync(&paths, context.project())?;
+            let result = sync::sync(&paths, context.project(), rebase.as_deref())?;
             if json {
                 json_output::print(&result)?;
             } else {
                 println!("Synced {}", result.target);
+                if let Some(rebase) = &result.rebase {
+                    println!("Rebased {}", rebase.branch);
+                }
             }
         }
         Some(Command::Handoff { include_untracked }) => {

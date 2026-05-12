@@ -2209,6 +2209,118 @@ fn sync_updates_main_and_non_main_default_target() {
 }
 
 #[test]
+fn sync_rebases_selected_agent_branch_after_mirror_update() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/rebase-me"]);
+    fixture.write_file(&workspace, "agent.txt", "agent work\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
+    let agent_before = fixture.git_stdout(&workspace, ["rev-parse", "agent/rebase-me"]);
+    fixture.git_in(&workspace, ["switch", "main"]);
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+    let human_head = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+
+    fixture
+        .agd()
+        .args(["sync", "--rebase", "agent/rebase-me"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Synced main"))
+        .stdout(predicate::str::contains("Rebased agent/rebase-me"));
+
+    let workspace_main = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+    assert_eq!(workspace_main.trim(), human_head.trim());
+    let agent_after = fixture.git_stdout(&workspace, ["rev-parse", "agent/rebase-me"]);
+    assert_ne!(agent_after.trim(), agent_before.trim());
+    let merge_base = fixture.git_stdout(
+        &workspace,
+        ["merge-base", human_head.trim(), agent_after.trim()],
+    );
+    assert_eq!(merge_base.trim(), human_head.trim());
+    assert_eq!(
+        fs::read_to_string(workspace.join("agent.txt")).expect("read agent work"),
+        "agent work\n"
+    );
+}
+
+#[test]
+fn json_sync_rebase_reports_rebased_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/rebase-json"]);
+    fixture.write_file(&workspace, "agent.txt", "agent json work\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent json work"]);
+    let agent_before = fixture.git_stdout(&workspace, ["rev-parse", "agent/rebase-json"]);
+    fixture.git_in(&workspace, ["switch", "main"]);
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+
+    let response = fixture.agd_json(
+        ["--json", "sync", "--rebase", "agent/rebase-json"],
+        &fixture.human,
+    );
+    assert_eq!(response["target"], "main");
+    assert_eq!(response["rebase"]["branch"], "agent/rebase-json");
+    assert_eq!(response["rebase"]["before"], agent_before.trim());
+    let agent_after = fixture.git_stdout(&workspace, ["rev-parse", "agent/rebase-json"]);
+    assert_eq!(response["rebase"]["after"], agent_after.trim());
+    assert_ne!(agent_after.trim(), agent_before.trim());
+}
+
+#[test]
+fn sync_rebase_rejects_protected_branch_before_syncing() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let workspace_main_before = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+
+    fixture
+        .agd()
+        .args(["sync", "--rebase", "main"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agent branch is required"));
+
+    let workspace_main_after = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+    assert_eq!(workspace_main_after.trim(), workspace_main_before.trim());
+}
+
+#[test]
 fn sync_refuses_dirty_or_diverged_state() {
     let dirty_human = Fixture::new();
     dirty_human.init_human_repo();
