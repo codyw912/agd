@@ -2472,7 +2472,14 @@ fn handoff_applies_human_tracked_changes_to_clean_agent_workspace() {
     assert_eq!(workspace_status.trim(), "M README.md");
     let workspace_head_after = fixture.git_stdout(&workspace, ["rev-parse", "HEAD"]);
     assert_eq!(workspace_head_after.trim(), workspace_head.trim());
-    assert!(workspace.join(".git/agd/handoff.json").exists());
+    let metadata =
+        fs::read(workspace.join(".git/agd/handoff.json")).expect("read handoff metadata");
+    let metadata: Value = serde_json::from_slice(&metadata).expect("parse handoff metadata");
+    assert_eq!(metadata["status"], "applied");
+    assert_eq!(metadata["workspace_id"], "default");
+    assert_eq!(metadata["human_head"], workspace_head.trim());
+    assert_eq!(metadata["tracked_files"], serde_json::json!(["README.md"]));
+    assert_eq!(metadata["untracked_files"], serde_json::json!([]));
 }
 
 #[test]
@@ -2563,7 +2570,52 @@ fn handoff_copies_selected_untracked_human_files() {
     let metadata =
         fs::read(workspace.join(".git/agd/handoff.json")).expect("read handoff metadata");
     let metadata: Value = serde_json::from_slice(&metadata).expect("parse handoff metadata");
+    assert_eq!(metadata["status"], "applied");
+    assert_eq!(metadata["tracked_files"], serde_json::json!([]));
     assert_eq!(metadata["untracked_files"][0], "notes/sketch.txt");
+}
+
+#[test]
+fn handoff_rejects_unsafe_selected_untracked_paths() {
+    let parent = Fixture::new();
+    parent.init_human_repo();
+    parent
+        .agd()
+        .arg("init")
+        .current_dir(&parent.human)
+        .assert()
+        .success();
+    parent
+        .agd()
+        .args(["handoff", "--include-untracked", "../outside.txt"])
+        .current_dir(&parent.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "untracked handoff path must be relative",
+        ));
+
+    let absolute = Fixture::new();
+    absolute.init_human_repo();
+    absolute
+        .agd()
+        .arg("init")
+        .current_dir(&absolute.human)
+        .assert()
+        .success();
+    let absolute_path = absolute._tmp.path().join("outside.txt");
+    fs::write(&absolute_path, "outside\n").expect("write outside");
+    absolute
+        .agd()
+        .arg("handoff")
+        .arg("--include-untracked")
+        .arg(&absolute_path)
+        .current_dir(&absolute.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "untracked handoff path must be relative",
+        ));
 }
 
 #[test]

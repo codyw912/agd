@@ -16,7 +16,9 @@ use time::OffsetDateTime;
 struct HandoffMetadata {
     project_id: String,
     workspace_id: String,
+    status: &'static str,
     human_head: String,
+    tracked_files: Vec<String>,
     untracked_files: Vec<String>,
     created_at: String,
 }
@@ -58,7 +60,14 @@ pub fn handoff(
         apply_patch(&workspace.path, &diff)?;
     }
     copy_untracked_files(&project.human_checkout, &workspace.path, include_untracked)?;
-    write_metadata(project, workspace, &human_head, include_untracked)?;
+    write_metadata(
+        project,
+        workspace,
+        "applied",
+        &human_head,
+        &tracked_files,
+        &untracked_files,
+    )?;
 
     Ok(HandoffResult {
         status: "applied",
@@ -186,8 +195,10 @@ fn apply_patch(repo: &Path, diff: &str) -> Result<()> {
 fn write_metadata(
     project: &Project,
     workspace: &Workspace,
+    status: &'static str,
     human_head: &str,
-    include_untracked: &[PathBuf],
+    tracked_files: &[String],
+    untracked_files: &[String],
 ) -> Result<()> {
     let created_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -195,11 +206,10 @@ fn write_metadata(
     let metadata = HandoffMetadata {
         project_id: project.project_id.clone(),
         workspace_id: workspace.id.clone(),
+        status,
         human_head: human_head.trim().to_string(),
-        untracked_files: include_untracked
-            .iter()
-            .map(|path| path.display().to_string())
-            .collect(),
+        tracked_files: tracked_files.to_vec(),
+        untracked_files: untracked_files.to_vec(),
         created_at,
     };
     let path = git_dir(&workspace.path)?.join("agd").join("handoff.json");
