@@ -413,6 +413,43 @@ fn json_init_outputs_project_and_workspace_metadata() {
 }
 
 #[test]
+fn init_records_upstream_remote_metadata() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git([
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:example/project.git",
+    ]);
+    fixture.git(["remote", "set-url", "--push", "origin", remote]);
+
+    let response = fixture.agd_json(["--json", "init"], &fixture.human);
+    assert_eq!(response["upstream_remote"]["name"], "origin");
+    assert_eq!(
+        response["upstream_remote"]["fetch_url"],
+        "git@github.com:example/project.git"
+    );
+    assert_eq!(response["upstream_remote"]["push_url"], remote);
+
+    let project_path = fixture
+        .agd_home
+        .join("projects")
+        .join(response["project_id"].as_str().expect("project id"))
+        .join("project.json");
+    let project = fs::read(project_path).expect("read project metadata");
+    let project: Value = serde_json::from_slice(&project).expect("parse project metadata");
+    assert_eq!(
+        project["upstream_remote"]["fetch_url"],
+        "git@github.com:example/project.git"
+    );
+    assert_eq!(project["upstream_remote"]["push_url"], remote);
+}
+
+#[test]
 fn json_init_warns_on_lfs_without_polluting_stdout() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -1971,6 +2008,104 @@ fn pr_falls_back_to_next_step_when_gh_is_missing() {
     fixture.git_stdout(
         std::path::Path::new(remote),
         ["rev-parse", "--verify", "refs/heads/agent/pr-no-gh"],
+    );
+}
+
+#[test]
+fn pr_fallback_includes_github_compare_url() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git([
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:example/project.git",
+    ]);
+    fixture.git(["remote", "set-url", "--push", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-url"]);
+    fixture.write_file(&workspace, "pr-url.txt", "agent PR url work\n");
+    fixture.git_in(&workspace, ["add", "pr-url.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent PR url work"]);
+
+    fixture
+        .agd()
+        .args(["pr", "agent/pr-url"])
+        .env("PATH", fixture.git_only_path())
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Pushed agent/pr-url to origin"))
+        .stdout(predicate::str::contains(
+            "https://github.com/example/project/compare/main...agent%2Fpr-url?expand=1",
+        ));
+
+    fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["rev-parse", "--verify", "refs/heads/agent/pr-url"],
+    );
+}
+
+#[test]
+fn pr_fallback_includes_gitlab_mr_url() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git([
+        "remote",
+        "add",
+        "origin",
+        "git@gitlab.com:example/project.git",
+    ]);
+    fixture.git(["remote", "set-url", "--push", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-url"]);
+    fixture.write_file(&workspace, "pr-url.txt", "agent PR url work\n");
+    fixture.git_in(&workspace, ["add", "pr-url.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent PR url work"]);
+
+    fixture
+        .agd()
+        .args(["pr", "agent/pr-url"])
+        .env("PATH", fixture.git_only_path())
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Pushed agent/pr-url to origin"))
+        .stdout(predicate::str::contains(
+            "https://gitlab.com/example/project/-/merge_requests/new",
+        ))
+        .stdout(predicate::str::contains(
+            "merge_request[source_branch]=agent%2Fpr-url",
+        ))
+        .stdout(predicate::str::contains(
+            "merge_request[target_branch]=main",
+        ));
+
+    fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["rev-parse", "--verify", "refs/heads/agent/pr-url"],
     );
 }
 
