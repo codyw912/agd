@@ -14,6 +14,8 @@ pub struct SyncResult {
     pub before: String,
     pub after: String,
     pub updates: Vec<SyncUpdate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rebase: Option<SyncRebase>,
 }
 
 #[derive(Debug, Serialize)]
@@ -23,7 +25,14 @@ pub struct SyncUpdate {
     pub after: String,
 }
 
-pub fn sync(paths: &AgdPaths, project: &Project) -> Result<SyncResult> {
+#[derive(Debug, Serialize)]
+pub struct SyncRebase {
+    pub branch: String,
+    pub before: String,
+    pub after: String,
+}
+
+pub fn sync(paths: &AgdPaths, project: &Project, rebase: Option<&str>) -> Result<SyncResult> {
     let workspace = project
         .workspaces
         .iter()
@@ -31,6 +40,9 @@ pub fn sync(paths: &AgdPaths, project: &Project) -> Result<SyncResult> {
         .context("default workspace not found")?;
     require_clean(&project.human_checkout, "human checkout")?;
     require_clean(&workspace.path, "agent workspace")?;
+    if let Some(branch) = rebase {
+        validate_rebase_branch(project, branch)?;
+    }
     let _lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "sync")?;
 
     let targets = mirror_targets(project)?;
@@ -47,6 +59,10 @@ pub fn sync(paths: &AgdPaths, project: &Project) -> Result<SyncResult> {
         .iter()
         .find(|update| update.target == project.default_target)
         .context("default target was not synced")?;
+    let rebase = match rebase {
+        Some(branch) => Some(rebase_agent_branch(project, &workspace.path, branch)?),
+        None => None,
+    };
 
     Ok(SyncResult {
         target: primary.target.clone(),
@@ -54,6 +70,7 @@ pub fn sync(paths: &AgdPaths, project: &Project) -> Result<SyncResult> {
         before: primary.before.clone(),
         after: primary.after.clone(),
         updates,
+        rebase,
     })
 }
 
@@ -106,8 +123,12 @@ fn sync_target(workspace: &Path, target: &str, is_default_target: bool) -> Resul
         )?;
     }
 
-    let target_ref = format!("refs/heads/{target}");
-    git::run(workspace, ["update-ref", &target_ref, human_tip])?;
+    if current_branch(workspace).as_deref() == Some(target) {
+        git::run(workspace, ["merge", "--ff-only", &fetched_ref])?;
+    } else {
+        let target_ref = format!("refs/heads/{target}");
+        git::run(workspace, ["update-ref", &target_ref, human_tip])?;
+    }
 
     Ok(SyncUpdate {
         target: target.to_string(),
@@ -120,6 +141,34 @@ fn require_clean(repo: &Path, name: &str) -> Result<()> {
     let status = git::stdout(repo, ["status", "--porcelain"])?;
     if !status.trim().is_empty() {
         anyhow::bail!("{name} has uncommitted changes");
+    }
+    Ok(())
+}
+
+fn current_branch(repo: &Path) -> Option<String> {
+    git::stdout(repo, ["branch", "--show-current"])
+        .ok()
+        .map(|branch| branch.trim().to_string())
+        .filter(|branch| !branch.is_empty())
+}
+
+fn rebase_agent_branch(project: &Project, workspace: &Path, branch: &str) -> Result<SyncRebase> {
+    validate_rebase_branch(project, branch)?;
+
+    let before = git::stdout(workspace, ["rev-parse", branch])?;
+    git::run(workspace, ["rebase", &project.default_target, branch])?;
+    let after = git::stdout(workspace, ["rev-parse", branch])?;
+
+    Ok(SyncRebase {
+        branch: branch.to_string(),
+        before: before.trim().to_string(),
+        after: after.trim().to_string(),
+    })
+}
+
+fn validate_rebase_branch(project: &Project, branch: &str) -> Result<()> {
+    if branch.is_empty() || branch == project.default_target || branch == "main" {
+        anyhow::bail!("agent branch is required");
     }
     Ok(())
 }

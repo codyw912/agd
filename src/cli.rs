@@ -24,7 +24,10 @@ pub enum Command {
         #[arg(long)]
         repair: bool,
     },
-    Sync,
+    Sync {
+        #[arg(long)]
+        rebase: Option<String>,
+    },
     Handoff {
         #[arg(long = "include-untracked")]
         include_untracked: Vec<PathBuf>,
