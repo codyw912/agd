@@ -16,10 +16,20 @@ pub struct Project {
     pub name: String,
     pub human_checkout: PathBuf,
     pub default_target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_remote: Option<UpstreamRemote>,
     pub default_workspace: String,
     pub created_at: String,
     pub agent_identity: Identity,
     pub workspaces: Vec<Workspace>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpstreamRemote {
+    pub name: String,
+    pub fetch_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub push_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,12 +96,14 @@ pub fn init_project(paths: &AgdPaths, cwd: &Path) -> Result<Project> {
         .and_then(|value| value.to_str())
         .unwrap_or("project")
         .to_string();
+    let upstream_remote = upstream_remote(&human_checkout);
 
     let project = Project {
         project_id: project_id.clone(),
         name,
         human_checkout,
         default_target: default_target.trim().to_string(),
+        upstream_remote,
         default_workspace: DEFAULT_WORKSPACE_ID.to_string(),
         created_at: now,
         agent_identity: Identity {
@@ -120,6 +132,23 @@ fn require_clean_human_checkout(human_checkout: &Path) -> Result<()> {
         anyhow::bail!("human checkout has uncommitted changes");
     }
     Ok(())
+}
+
+fn upstream_remote(human_checkout: &Path) -> Option<UpstreamRemote> {
+    let fetch_url = git::stdout(human_checkout, ["config", "--get", "remote.origin.url"])
+        .ok()
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())?;
+    let push_url = git::stdout(human_checkout, ["config", "--get", "remote.origin.pushurl"])
+        .ok()
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty());
+
+    Some(UpstreamRemote {
+        name: "origin".to_string(),
+        fetch_url,
+        push_url,
+    })
 }
 
 pub fn save_project(paths: &AgdPaths, project: &Project) -> Result<()> {

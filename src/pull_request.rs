@@ -76,13 +76,7 @@ fn create_pull_request(project: &Project, branch: &str, body: &str) -> Result<Op
 }
 
 fn is_gitlab_remote(project: &Project) -> bool {
-    match git::stdout(
-        &project.human_checkout,
-        ["config", "--get", "remote.origin.url"],
-    ) {
-        Ok(url) => url.to_ascii_lowercase().contains("gitlab"),
-        Err(_) => false,
-    }
+    upstream_remote_url(project).is_some_and(|url| url.to_ascii_lowercase().contains("gitlab"))
 }
 
 fn create_github_pr(project: &Project, branch: &str, body: &str) -> Result<Output, PrCreateError> {
@@ -146,10 +140,81 @@ fn create_gitlab_mr(project: &Project, branch: &str, body: &str) -> Result<Outpu
 }
 
 fn next_step(project: &Project, branch: &str) -> String {
-    format!(
+    let generic = format!(
         "Pushed {branch} to origin. Open a pull request from {branch} into {}.",
         project.default_target
-    )
+    );
+    match hosted_pr_url(project, branch) {
+        Some(url) => format!("{generic}\nOpen: {url}"),
+        None => generic,
+    }
+}
+
+fn hosted_pr_url(project: &Project, branch: &str) -> Option<String> {
+    let remote_url = upstream_remote_url(project)?;
+    let (host, path) = parse_remote_host_path(&remote_url)?;
+    let host_lower = host.to_ascii_lowercase();
+    let base = percent_encode_component(&project.default_target);
+    let branch = percent_encode_component(branch);
+
+    if host_lower.contains("github") {
+        return Some(format!(
+            "https://{host}/{path}/compare/{base}...{branch}?expand=1"
+        ));
+    }
+    if host_lower.contains("gitlab") {
+        return Some(format!(
+            "https://{host}/{path}/-/merge_requests/new?merge_request[source_branch]={branch}&merge_request[target_branch]={base}"
+        ));
+    }
+
+    None
+}
+
+fn upstream_remote_url(project: &Project) -> Option<String> {
+    project
+        .upstream_remote
+        .as_ref()
+        .map(|remote| remote.fetch_url.clone())
+        .or_else(|| {
+            git::stdout(
+                &project.human_checkout,
+                ["config", "--get", "remote.origin.url"],
+            )
+            .ok()
+            .map(|url| url.trim().to_string())
+            .filter(|url| !url.is_empty())
+        })
+}
+
+fn parse_remote_host_path(remote_url: &str) -> Option<(String, String)> {
+    let remote_url = remote_url.trim();
+    let (host, path) = if let Some((_, rest)) = remote_url.split_once("://") {
+        let rest = rest.rsplit_once('@').map_or(rest, |(_, rest)| rest);
+        rest.split_once('/')?
+    } else if let Some((host, path)) = remote_url.split_once(':') {
+        let host = host.rsplit_once('@').map_or(host, |(_, host)| host);
+        (host, path)
+    } else {
+        return None;
+    };
+    let path = path.trim_matches('/').strip_suffix(".git").unwrap_or(path);
+    if host.is_empty() || path.is_empty() {
+        return None;
+    }
+    Some((host.to_string(), path.to_string()))
+}
+
+fn percent_encode_component(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (byte as char).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
 }
 
 fn pr_body(

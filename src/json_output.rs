@@ -1,5 +1,5 @@
 use crate::git;
-use crate::project::{Identity, Project, ProjectContext, Workspace};
+use crate::project::{Identity, Project, ProjectContext, UpstreamRemote, Workspace};
 use crate::review;
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -16,6 +16,8 @@ struct StatusResponse {
     project_id: String,
     project: String,
     human_checkout: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    upstream_remote: Option<UpstreamRemoteResponse>,
     workspace: WorkspaceResponse,
     agent_identity: IdentityResponse,
     signing: &'static str,
@@ -29,6 +31,8 @@ struct InitResponse {
     project_id: String,
     project: String,
     human_checkout: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    upstream_remote: Option<UpstreamRemoteResponse>,
     workspace: WorkspaceResponse,
 }
 
@@ -46,6 +50,14 @@ struct IdentityResponse {
     name: String,
     email: String,
     signing: String,
+}
+
+#[derive(Debug, Serialize)]
+struct UpstreamRemoteResponse {
+    name: String,
+    fetch_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    push_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -80,6 +92,10 @@ pub fn init(project: &Project, workspace: &Workspace) -> Result<()> {
         project_id: project.project_id.clone(),
         project: project.name.clone(),
         human_checkout: project.human_checkout.display().to_string(),
+        upstream_remote: project
+            .upstream_remote
+            .as_ref()
+            .map(upstream_remote_response),
         workspace: workspace_response(workspace),
     })
 }
@@ -100,6 +116,10 @@ pub fn status(context: &ProjectContext, cwd: &Path) -> Result<()> {
         project_id: project.project_id.clone(),
         project: project.name.clone(),
         human_checkout: project.human_checkout.display().to_string(),
+        upstream_remote: project
+            .upstream_remote
+            .as_ref()
+            .map(upstream_remote_response),
         workspace: workspace_response(workspace),
         agent_identity: identity_response(&project.agent_identity),
         signing: "disabled",
@@ -164,5 +184,13 @@ fn identity_response(identity: &Identity) -> IdentityResponse {
         name: identity.name.clone(),
         email: identity.email.clone(),
         signing: identity.signing.clone(),
+    }
+}
+
+fn upstream_remote_response(remote: &UpstreamRemote) -> UpstreamRemoteResponse {
+    UpstreamRemoteResponse {
+        name: remote.name.clone(),
+        fetch_url: remote.fetch_url.clone(),
+        push_url: remote.push_url.clone(),
     }
 }
