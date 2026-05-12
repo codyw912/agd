@@ -23,8 +23,8 @@ pub struct ResetWorkspaceResult {
 pub fn discard(paths: &AgdPaths, project: &Project, branch: &str) -> Result<DiscardResult> {
     let workspace = default_workspace(project)?;
     require_clean(&workspace.path, "agent workspace")?;
-    if branch == project.default_target {
-        anyhow::bail!("refusing to discard default target");
+    if is_protected_branch(project, branch) {
+        anyhow::bail!("refusing to discard protected branch");
     }
     let _lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "discard")?;
     git::run(&workspace.path, ["branch", "-D", branch])?;
@@ -32,6 +32,10 @@ pub fn discard(paths: &AgdPaths, project: &Project, branch: &str) -> Result<Disc
         branch: branch.to_string(),
         workspace_id: workspace.id.clone(),
     })
+}
+
+fn is_protected_branch(project: &Project, branch: &str) -> bool {
+    branch.is_empty() || branch == project.default_target || branch == "main"
 }
 
 pub fn reset_workspace(paths: &AgdPaths, project: &Project) -> Result<ResetWorkspaceResult> {
