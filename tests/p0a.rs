@@ -370,6 +370,29 @@ fn init_refuses_dirty_human_checkout() {
 }
 
 #[test]
+fn init_warns_when_submodules_are_declared() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.write_file(
+        &fixture.human,
+        ".gitmodules",
+        "[submodule \"vendor/lib\"]\n\tpath = vendor/lib\n\turl = https://example.invalid/lib.git\n",
+    );
+    fixture.git(["add", ".gitmodules"]);
+    fixture.git(["commit", "-m", "declare submodule"]);
+
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Initialized AGD."))
+        .stderr(predicate::str::contains("warn submodules"))
+        .stderr(predicate::str::contains(".gitmodules"));
+}
+
+#[test]
 fn json_init_outputs_project_and_workspace_metadata() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -387,6 +410,33 @@ fn json_init_outputs_project_and_workspace_metadata() {
         .as_str()
         .expect("workspace path");
     assert!(std::path::Path::new(workspace).join(".git").exists());
+}
+
+#[test]
+fn json_init_warns_on_lfs_without_polluting_stdout() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.write_file(
+        &fixture.human,
+        ".gitattributes",
+        "*.bin filter=lfs diff=lfs merge=lfs -text\n",
+    );
+    fixture.git(["add", ".gitattributes"]);
+    fixture.git(["commit", "-m", "declare lfs filters"]);
+
+    let output = fixture
+        .agd()
+        .args(["--json", "init"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("warn Git LFS"))
+        .stderr(predicate::str::contains("filter=lfs"))
+        .get_output()
+        .stdout
+        .clone();
+    let response: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(response["workspace"]["id"], "default");
 }
 
 #[test]

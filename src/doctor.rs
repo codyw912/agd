@@ -61,6 +61,19 @@ pub fn print_report(report: &DoctorReport) -> Result<()> {
     ensure_passed(report)
 }
 
+pub fn print_warnings(report: &DoctorReport) {
+    for check in &report.checks {
+        if check.status != "warn" {
+            continue;
+        }
+        if check.detail.is_empty() {
+            eprintln!("warn {}", check.name);
+        } else {
+            eprintln!("warn {}: {}", check.name, check.detail);
+        }
+    }
+}
+
 pub fn metadata_failure_report(paths: &AgdPaths, cwd: &Path) -> Option<DoctorReport> {
     let detail = human_marker_metadata_failure(paths, cwd)
         .or_else(|| workspace_marker_metadata_failure(paths, cwd))?;

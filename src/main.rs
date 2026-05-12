@@ -35,6 +35,9 @@ fn main() -> Result<()> {
             let mut project = project::init_project(&paths, &cwd)?;
             let workspace_path = workspace::ensure_default_workspace(&paths, &mut project)?;
             project::save_project(&paths, &project)?;
+            let context = project::ProjectContext::HumanCheckout(project.clone());
+            let report = doctor::report(&paths, &context, &cwd);
+            doctor::print_warnings(&report);
             if json {
                 let workspace = json_output::default_workspace(&project)?;
                 json_output::init(&project, workspace)?;
