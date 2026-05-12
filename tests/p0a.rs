@@ -2275,7 +2275,8 @@ fn sync_refuses_dirty_or_diverged_state() {
         .failure()
         .stderr(predicate::str::contains(
             "default target cannot be fast-forwarded",
-        ));
+        ))
+        .stderr(predicate::str::contains("agd reset-workspace"));
 }
 
 #[test]
