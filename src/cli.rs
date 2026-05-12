@@ -52,11 +52,15 @@ pub enum Command {
     Discard {
         #[arg(long)]
         force: bool,
+        #[arg(long)]
+        workspace: Option<String>,
         branch: String,
     },
     ResetWorkspace {
         #[arg(long)]
         force: bool,
+        #[arg(long)]
+        workspace: Option<String>,
     },
     Workspace {
         #[command(subcommand)]

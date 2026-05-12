@@ -26,8 +26,9 @@ pub fn discard(
     project: &Project,
     branch: &str,
     force: bool,
+    workspace_id: Option<&str>,
 ) -> Result<DiscardResult> {
-    let workspace = default_workspace(project)?;
+    let workspace = selected_workspace(project, workspace_id)?;
     if branch_policy::is_protected_branch(project, branch) {
         anyhow::bail!("refusing to discard protected branch");
     }
@@ -52,9 +53,10 @@ pub fn reset_workspace(
     paths: &AgdPaths,
     project: &Project,
     force: bool,
+    workspace_id: Option<&str>,
 ) -> Result<ResetWorkspaceResult> {
     let mut project = project.clone();
-    let workspace = default_workspace(&project)?;
+    let workspace = selected_workspace(&project, workspace_id)?;
     let workspace_id = workspace.id.clone();
     if !force {
         require_clean(&workspace.path, "agent workspace")?;
@@ -65,7 +67,7 @@ pub fn reset_workspace(
 
     fs::remove_dir_all(&workspace_path)
         .with_context(|| format!("remove {}", workspace_path.display()))?;
-    let recreated = workspace::ensure_default_workspace(paths, &mut project)?;
+    let recreated = workspace::ensure_workspace(paths, &mut project, &workspace_id)?;
     project::save_project(paths, &project)?;
 
     Ok(ResetWorkspaceResult {
@@ -74,12 +76,16 @@ pub fn reset_workspace(
     })
 }
 
-fn default_workspace(project: &Project) -> Result<&crate::project::Workspace> {
+fn selected_workspace<'a>(
+    project: &'a Project,
+    workspace_id: Option<&str>,
+) -> Result<&'a crate::project::Workspace> {
+    let workspace_id = workspace_id.unwrap_or(&project.default_workspace);
     project
         .workspaces
         .iter()
-        .find(|workspace| workspace.id == project.default_workspace)
-        .context("default workspace not found")
+        .find(|workspace| workspace.id == workspace_id)
+        .with_context(|| format!("workspace not found: {workspace_id}"))
 }
 
 fn require_clean(repo: &Path, name: &str) -> Result<()> {
