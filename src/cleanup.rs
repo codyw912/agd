@@ -20,13 +20,26 @@ pub struct ResetWorkspaceResult {
     pub path: PathBuf,
 }
 
-pub fn discard(paths: &AgdPaths, project: &Project, branch: &str) -> Result<DiscardResult> {
+pub fn discard(
+    paths: &AgdPaths,
+    project: &Project,
+    branch: &str,
+    force: bool,
+) -> Result<DiscardResult> {
     let workspace = default_workspace(project)?;
-    require_clean(&workspace.path, "agent workspace")?;
     if is_protected_branch(project, branch) {
         anyhow::bail!("refusing to discard protected branch");
     }
+    if !force {
+        require_clean(&workspace.path, "agent workspace")?;
+    }
     let _lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "discard")?;
+    if force {
+        discard_workspace_changes(&workspace.path)?;
+        if current_branch(&workspace.path)?.as_deref() == Some(branch) {
+            git::run(&workspace.path, ["switch", project.default_target.as_str()])?;
+        }
+    }
     git::run(&workspace.path, ["branch", "-D", branch])?;
     Ok(DiscardResult {
         branch: branch.to_string(),
@@ -38,11 +51,17 @@ fn is_protected_branch(project: &Project, branch: &str) -> bool {
     branch.is_empty() || branch == project.default_target || branch == "main"
 }
 
-pub fn reset_workspace(paths: &AgdPaths, project: &Project) -> Result<ResetWorkspaceResult> {
+pub fn reset_workspace(
+    paths: &AgdPaths,
+    project: &Project,
+    force: bool,
+) -> Result<ResetWorkspaceResult> {
     let mut project = project.clone();
     let workspace = default_workspace(&project)?;
     let workspace_id = workspace.id.clone();
-    require_clean(&workspace.path, "agent workspace")?;
+    if !force {
+        require_clean(&workspace.path, "agent workspace")?;
+    }
     let workspace_path = workspace.path.clone();
     let _lock =
         OperationLock::acquire(paths, &project.project_id, &workspace.id, "reset-workspace")?;
@@ -72,4 +91,16 @@ fn require_clean(repo: &Path, name: &str) -> Result<()> {
         anyhow::bail!("{name} has uncommitted changes");
     }
     Ok(())
+}
+
+fn discard_workspace_changes(repo: &Path) -> Result<()> {
+    git::run(repo, ["reset", "--hard"])?;
+    git::run(repo, ["clean", "-fd"])?;
+    Ok(())
+}
+
+fn current_branch(repo: &Path) -> Result<Option<String>> {
+    let branch = git::stdout(repo, ["branch", "--show-current"])?;
+    let branch = branch.trim();
+    Ok((!branch.is_empty()).then(|| branch.to_string()))
 }

@@ -213,20 +213,20 @@ fn main() -> Result<()> {
                 review::files(context.project(), branch.as_deref(), &cwd)?;
             }
         }
-        Some(Command::Discard { branch }) => {
+        Some(Command::Discard { branch, force }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let result = cleanup::discard(&paths, context.project(), &branch)?;
+            let result = cleanup::discard(&paths, context.project(), &branch, force)?;
             if json {
                 json_output::print(&result)?;
             } else {
                 println!("Discarded {}", result.branch);
             }
         }
-        Some(Command::ResetWorkspace) => {
+        Some(Command::ResetWorkspace { force }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let result = cleanup::reset_workspace(&paths, context.project())?;
+            let result = cleanup::reset_workspace(&paths, context.project(), force)?;
             if json {
                 json_output::print(&result)?;
             } else {

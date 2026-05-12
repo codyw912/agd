@@ -50,9 +50,14 @@ pub enum Command {
         branch: Option<String>,
     },
     Discard {
+        #[arg(long)]
+        force: bool,
         branch: String,
     },
-    ResetWorkspace,
+    ResetWorkspace {
+        #[arg(long)]
+        force: bool,
+    },
     Workspace {
         #[command(subcommand)]
         command: WorkspaceCommand,

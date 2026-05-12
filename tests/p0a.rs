@@ -2892,6 +2892,64 @@ fn discard_refuses_dirty_agent_workspace() {
 }
 
 #[test]
+fn discard_force_deletes_dirty_agent_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/dirty-force"]);
+    fixture.write_file(&workspace, "dirty.txt", "dirty work\n");
+
+    fixture
+        .agd()
+        .args(["discard", "--force", "agent/dirty-force"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Discarded agent/dirty-force"));
+
+    fixture.git_fails(&workspace, ["rev-parse", "--verify", "agent/dirty-force"]);
+    let current = fixture.git_stdout(&workspace, ["branch", "--show-current"]);
+    assert_eq!(current.trim(), "main");
+    let status = fixture.git_stdout(&workspace, ["status", "--porcelain"]);
+    assert!(status.trim().is_empty());
+    assert!(!workspace.join("dirty.txt").exists());
+}
+
+#[test]
+fn discard_force_still_rejects_protected_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    fixture.write_file(&workspace, "dirty-main.txt", "dirty main\n");
+
+    fixture
+        .agd()
+        .args(["discard", "--force", "main"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "refusing to discard protected branch",
+        ));
+
+    fixture.git_stdout(&workspace, ["rev-parse", "--verify", "main"]);
+    assert!(workspace.join("dirty-main.txt").exists());
+}
+
+#[test]
 fn reset_workspace_recreates_clean_managed_clone() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -2924,6 +2982,37 @@ fn reset_workspace_recreates_clean_managed_clone() {
     assert_eq!(author.trim(), "agent@agd.invalid");
     let pushurl = fixture.git_stdout(&workspace, ["remote", "get-url", "--push", "origin"]);
     assert_eq!(pushurl.trim(), "agd-deny://push-disabled");
+}
+
+#[test]
+fn reset_workspace_force_recreates_dirty_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/reset-dirty"]);
+    fixture.write_file(&workspace, "dirty-reset.txt", "dirty reset\n");
+
+    fixture
+        .agd()
+        .args(["reset-workspace", "--force"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Reset workspace"));
+
+    assert!(workspace.join(".git").exists());
+    assert!(workspace.join(".agd/workspace.json").exists());
+    assert!(!workspace.join("dirty-reset.txt").exists());
+    fixture.git_fails(&workspace, ["rev-parse", "--verify", "agent/reset-dirty"]);
+    let status = fixture.git_stdout(&workspace, ["status", "--porcelain"]);
+    assert!(status.trim().is_empty());
 }
 
 #[test]
