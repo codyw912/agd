@@ -1,6 +1,6 @@
 use crate::git;
 use crate::project::Project;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use std::ffi::OsString;
 use std::io::ErrorKind;
@@ -34,6 +34,39 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullR
     git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
 
     let body = pr_body(project, workspace, &branch)?;
+    let output = match create_github_pr(project, &branch, &body) {
+        Ok(output) => output,
+        Err(PrCreateError::MissingCli) => match create_gitlab_mr(project, &branch, &body) {
+            Ok(output) => output,
+            Err(PrCreateError::MissingCli) => {
+                return Ok(PullRequestResult {
+                    branch: branch.clone(),
+                    url: None,
+                    next_step: Some(next_step(project, &branch)),
+                });
+            }
+            Err(PrCreateError::Failure(error)) => return Err(error),
+        },
+        Err(PrCreateError::Failure(error)) => return Err(error),
+    };
+    let url = String::from_utf8(output.stdout).context("PR tool output was not utf-8")?;
+    Ok(PullRequestResult {
+        branch,
+        url: Some(url.trim().to_string()),
+        next_step: None,
+    })
+}
+
+enum PrCreateError {
+    MissingCli,
+    Failure(anyhow::Error),
+}
+
+fn create_github_pr(
+    project: &Project,
+    branch: &str,
+    body: &str,
+) -> Result<std::process::Output, PrCreateError> {
     let output = match Command::new("gh")
         .args([
             "pr",
@@ -41,37 +74,60 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullR
             "--base",
             &project.default_target,
             "--head",
-            &branch,
+            branch,
             "--title",
-            &branch,
+            branch,
             "--body",
-            &body,
+            body,
         ])
         .current_dir(&project.human_checkout)
         .output()
     {
         Ok(output) => output,
-        Err(error) if error.kind() == ErrorKind::NotFound => {
-            return Ok(PullRequestResult {
-                branch: branch.clone(),
-                url: None,
-                next_step: Some(next_step(project, &branch)),
-            });
-        }
-        Err(error) => return Err(error).context("run gh"),
+        Err(error) if error.kind() == ErrorKind::NotFound => return Err(PrCreateError::MissingCli),
+        Err(error) => return Err(PrCreateError::Failure(anyhow!(error).context("run gh"))),
     };
     if !output.status.success() {
-        anyhow::bail!(
+        return Err(PrCreateError::Failure(anyhow!(
             "gh pr create failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
-        );
+        )));
     }
-    let url = String::from_utf8(output.stdout).context("gh output was not utf-8")?;
-    Ok(PullRequestResult {
-        branch,
-        url: Some(url.trim().to_string()),
-        next_step: None,
-    })
+    Ok(output)
+}
+
+fn create_gitlab_mr(
+    project: &Project,
+    branch: &str,
+    body: &str,
+) -> Result<std::process::Output, PrCreateError> {
+    let output = match Command::new("glab")
+        .args([
+            "mr",
+            "create",
+            "--target-branch",
+            &project.default_target,
+            "--source-branch",
+            branch,
+            "--title",
+            branch,
+            "--description",
+            body,
+        ])
+        .current_dir(&project.human_checkout)
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Err(PrCreateError::MissingCli),
+        Err(error) => return Err(PrCreateError::Failure(anyhow!(error).context("run glab"))),
+    };
+    if !output.status.success() {
+        return Err(PrCreateError::Failure(anyhow!(
+            "glab mr create failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    Ok(output)
 }
 
 fn next_step(project: &Project, branch: &str) -> String {

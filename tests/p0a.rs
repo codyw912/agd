@@ -166,6 +166,25 @@ impl Fixture {
         std::env::join_paths(paths).expect("join PATH")
     }
 
+    fn fake_glab_path(&self, capture_path: &std::path::Path) -> std::ffi::OsString {
+        let bin_dir = self._tmp.path().join("fake-glab-bin");
+        fs::create_dir_all(&bin_dir).expect("create fake glab bin");
+        let git = find_executable("git");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(git, bin_dir.join("git")).expect("symlink git");
+        let glab = bin_dir.join("glab");
+        fs::write(
+            &glab,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nprintf '%s\\n' 'https://gitlab.example.test/mr/1'\n",
+                capture_path.display()
+            ),
+        )
+        .expect("write fake glab");
+        make_executable(&glab);
+        std::env::join_paths([bin_dir]).expect("join PATH")
+    }
+
     fn git_only_path(&self) -> std::ffi::OsString {
         let bin_dir = self._tmp.path().join("git-only-bin");
         fs::create_dir_all(&bin_dir).expect("create git-only bin");
@@ -1842,6 +1861,52 @@ fn pr_falls_back_to_next_step_when_gh_is_missing() {
         std::path::Path::new(remote),
         ["rev-parse", "--verify", "refs/heads/agent/pr-no-gh"],
     );
+}
+
+#[test]
+fn pr_uses_glab_when_gh_is_missing() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-glab"]);
+    fixture.write_file(&workspace, "pr-glab.txt", "agent PR glab work\n");
+    fixture.git_in(&workspace, ["add", "pr-glab.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent PR glab work"]);
+
+    let glab_capture = fixture._tmp.path().join("glab-args.txt");
+    fixture
+        .agd()
+        .args(["pr", "agent/pr-glab"])
+        .env("PATH", fixture.fake_glab_path(&glab_capture))
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("https://gitlab.example.test/mr/1"));
+
+    fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["rev-parse", "--verify", "refs/heads/agent/pr-glab"],
+    );
+    let glab_args = fs::read_to_string(glab_capture).expect("read glab args");
+    assert!(glab_args.contains("mr\n"));
+    assert!(glab_args.contains("create\n"));
+    assert!(glab_args.contains("--target-branch\nmain\n"));
+    assert!(glab_args.contains("--source-branch\nagent/pr-glab\n"));
+    assert!(glab_args.contains("--title\nagent/pr-glab\n"));
+    assert!(glab_args.contains("--description\n"));
+    assert!(glab_args.contains("agent PR glab work"));
 }
 
 #[test]
