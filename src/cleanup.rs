@@ -1,3 +1,4 @@
+use crate::branch_policy;
 use crate::git;
 use crate::operation_lock::OperationLock;
 use crate::paths::AgdPaths;
@@ -27,7 +28,7 @@ pub fn discard(
     force: bool,
 ) -> Result<DiscardResult> {
     let workspace = default_workspace(project)?;
-    if is_protected_branch(project, branch) {
+    if branch_policy::is_protected_branch(project, branch) {
         anyhow::bail!("refusing to discard protected branch");
     }
     if !force {
@@ -45,10 +46,6 @@ pub fn discard(
         branch: branch.to_string(),
         workspace_id: workspace.id.clone(),
     })
-}
-
-fn is_protected_branch(project: &Project, branch: &str) -> bool {
-    branch.is_empty() || branch == project.default_target || branch == "main"
 }
 
 pub fn reset_workspace(

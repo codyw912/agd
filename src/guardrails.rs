@@ -1,3 +1,4 @@
+use crate::branch_policy;
 use crate::git;
 use crate::paths::AgdPaths;
 use anyhow::{Context, Result};
@@ -86,10 +87,11 @@ fn configure_push_denial(workspace_path: &Path) -> Result<()> {
 
 fn install_pre_commit_hook(workspace_path: &Path) -> Result<()> {
     let hook_path = workspace_path.join(".git/hooks/pre-commit");
+    let protected_patterns = branch_policy::shell_case_patterns();
     fs::write(
         &hook_path,
         format!(
-            "#!/bin/sh\nbranch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)\ncase \"$branch\" in\n  main|master|trunk|develop|stable|production|prod|release/*|stable/*|production/*|prod/*)\n    echo \"{PROTECTED_BRANCH_HOOK_MESSAGE} '$branch' are disabled.\" >&2\n    echo '{PROTECTED_BRANCH_HOOK_HINT}' >&2\n    exit 1\n    ;;\nesac\nexit 0\n"
+            "#!/bin/sh\nbranch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)\ncase \"$branch\" in\n  {protected_patterns})\n    echo \"{PROTECTED_BRANCH_HOOK_MESSAGE} '$branch' are disabled.\" >&2\n    echo '{PROTECTED_BRANCH_HOOK_HINT}' >&2\n    exit 1\n    ;;\nesac\nexit 0\n"
         ),
     )
     .with_context(|| format!("write {}", hook_path.display()))?;
