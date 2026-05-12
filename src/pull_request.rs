@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::ffi::OsString;
 use std::io::ErrorKind;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output};
 
 #[derive(Debug, Serialize)]
 pub struct PullRequestResult {
@@ -34,20 +34,12 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullR
     git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
 
     let body = pr_body(project, workspace, &branch)?;
-    let output = match create_github_pr(project, &branch, &body) {
-        Ok(output) => output,
-        Err(PrCreateError::MissingCli) => match create_gitlab_mr(project, &branch, &body) {
-            Ok(output) => output,
-            Err(PrCreateError::MissingCli) => {
-                return Ok(PullRequestResult {
-                    branch: branch.clone(),
-                    url: None,
-                    next_step: Some(next_step(project, &branch)),
-                });
-            }
-            Err(PrCreateError::Failure(error)) => return Err(error),
-        },
-        Err(PrCreateError::Failure(error)) => return Err(error),
+    let Some(output) = create_pull_request(project, &branch, &body)? else {
+        return Ok(PullRequestResult {
+            branch: branch.clone(),
+            url: None,
+            next_step: Some(next_step(project, &branch)),
+        });
     };
     let url = String::from_utf8(output.stdout).context("PR tool output was not utf-8")?;
     Ok(PullRequestResult {
@@ -62,11 +54,37 @@ enum PrCreateError {
     Failure(anyhow::Error),
 }
 
-fn create_github_pr(
-    project: &Project,
-    branch: &str,
-    body: &str,
-) -> Result<std::process::Output, PrCreateError> {
+fn create_pull_request(project: &Project, branch: &str, body: &str) -> Result<Option<Output>> {
+    if is_gitlab_remote(project) {
+        return match create_gitlab_mr(project, branch, body) {
+            Ok(output) => Ok(Some(output)),
+            Err(PrCreateError::MissingCli) => Ok(None),
+            Err(PrCreateError::Failure(error)) => Err(error),
+        };
+    }
+
+    match create_github_pr(project, branch, body) {
+        Ok(output) => Ok(Some(output)),
+        Err(PrCreateError::MissingCli) => match create_gitlab_mr(project, branch, body) {
+            Ok(output) => Ok(Some(output)),
+            Err(PrCreateError::MissingCli) => Ok(None),
+            Err(PrCreateError::Failure(error)) => Err(error),
+        },
+        Err(PrCreateError::Failure(error)) => Err(error),
+    }
+}
+
+fn is_gitlab_remote(project: &Project) -> bool {
+    match git::stdout(
+        &project.human_checkout,
+        ["config", "--get", "remote.origin.url"],
+    ) {
+        Ok(url) => url.to_ascii_lowercase().contains("gitlab"),
+        Err(_) => false,
+    }
+}
+
+fn create_github_pr(project: &Project, branch: &str, body: &str) -> Result<Output, PrCreateError> {
     let output = match Command::new("gh")
         .args([
             "pr",
@@ -96,11 +114,7 @@ fn create_github_pr(
     Ok(output)
 }
 
-fn create_gitlab_mr(
-    project: &Project,
-    branch: &str,
-    body: &str,
-) -> Result<std::process::Output, PrCreateError> {
+fn create_gitlab_mr(project: &Project, branch: &str, body: &str) -> Result<Output, PrCreateError> {
     let output = match Command::new("glab")
         .args([
             "mr",
