@@ -133,10 +133,12 @@ fn ensure_fast_forward(
 ) -> Result<()> {
     let merge_base = git::stdout(repo, ["merge-base", old, new])?;
     if merge_base.trim() != old {
+        let guidance =
+            "Run `agd reset-workspace` to recreate the managed workspace from the human checkout.";
         if is_default_target {
-            anyhow::bail!("default target cannot be fast-forwarded");
+            anyhow::bail!("default target cannot be fast-forwarded. {guidance}");
         }
-        anyhow::bail!("{target} cannot be fast-forwarded");
+        anyhow::bail!("{target} cannot be fast-forwarded. {guidance}");
     }
     Ok(())
 }
