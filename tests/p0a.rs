@@ -260,6 +260,21 @@ impl Fixture {
         String::from_utf8(output.stdout).expect("utf-8 stdout")
     }
 
+    fn git_stdout_bytes<const N: usize>(&self, repo: &std::path::Path, args: [&str; N]) -> Vec<u8> {
+        let output = StdCommand::new("git")
+            .args(args)
+            .current_dir(repo)
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        output.stdout
+    }
+
     fn git_fails<const N: usize>(&self, repo: &std::path::Path, args: [&str; N]) -> String {
         let output = StdCommand::new("git")
             .args(args)
@@ -1778,6 +1793,18 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
     fixture.git_in(&workspace, ["add", "pr.txt"]);
     fixture.git_in(&workspace, ["commit", "-m", "agent PR work"]);
     let agent_tip = fixture.git_stdout(&workspace, ["rev-parse", "agent/pr-test"]);
+    let patch = fixture.git_stdout_bytes(
+        &workspace,
+        [
+            "diff",
+            "--binary",
+            "--full-index",
+            "--no-ext-diff",
+            base_commit.trim(),
+            agent_tip.trim(),
+        ],
+    );
+    let patch_sha256 = sha256_hex(&patch);
 
     let gh_capture = fixture._tmp.path().join("gh-args.txt");
     let fake_path = fixture.fake_gh_path(&gh_capture);
@@ -1808,6 +1835,7 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
     assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-test"));
     assert!(gh_args.contains(&format!("AGD-Agent-Base: {}", base_commit.trim())));
     assert!(gh_args.contains(&format!("AGD-Agent-Tip: {}", agent_tip.trim())));
+    assert!(gh_args.contains(&format!("AGD-Patch-SHA256: {patch_sha256}")));
     assert!(gh_args.contains("agent PR work"));
     assert!(gh_args.contains("pr.txt"));
 }

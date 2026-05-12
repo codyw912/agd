@@ -1,5 +1,6 @@
 use crate::git;
 use crate::project::Project;
+use crate::provenance;
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use std::ffi::OsString;
@@ -158,6 +159,8 @@ fn pr_body(
 ) -> Result<String> {
     let base_commit = git::stdout(&workspace.path, ["rev-parse", &project.default_target])?;
     let agent_tip = git::stdout(&workspace.path, ["rev-parse", branch])?;
+    let patch_sha256 =
+        provenance::patch_sha256(&workspace.path, base_commit.trim(), agent_tip.trim())?;
     let commits = git::stdout(
         &workspace.path,
         [
@@ -191,7 +194,7 @@ fn pr_body(
     };
 
     Ok(format!(
-        "## Summary\n- Agent branch: {branch}\n- Base branch: {}\n- Base commit: {}\n- Agent tip: {}\n\n## Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Provenance\nAGD-Agent-Branch: {branch}\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\n\n## Adoption Recommendation\nReview this PR, then adopt with `agd bless {branch}` if it should become signed human history.",
+        "## Summary\n- Agent branch: {branch}\n- Base branch: {}\n- Base commit: {}\n- Agent tip: {}\n\n## Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Provenance\nAGD-Agent-Branch: {branch}\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\nAGD-Patch-SHA256: {patch_sha256}\n\n## Adoption Recommendation\nReview this PR, then adopt with `agd bless {branch}` if it should become signed human history.",
         project.default_target,
         base_commit.trim(),
         agent_tip.trim(),
