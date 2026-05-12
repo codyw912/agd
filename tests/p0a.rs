@@ -4228,6 +4228,40 @@ fn doctor_warns_when_lfs_pointer_files_are_tracked() {
 }
 
 #[test]
+fn init_and_doctor_ignore_files_that_only_mention_lfs_pointer_text() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.write_file(
+        &fixture.human,
+        "docs/lfs-notes.md",
+        "This note documents the fixture format.\n\
+version https://git-lfs.github.com/spec/v1\n\
+oid sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\
+size 123\n\
+This file is not a pointer.\n",
+    );
+    fixture.git(["add", "docs/lfs-notes.md"]);
+    fixture.git(["commit", "-m", "document lfs pointer fixture"]);
+
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("warn Git LFS").not());
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("warn Git LFS").not())
+        .stdout(predicate::str::contains("looks like Git LFS pointer").not());
+}
+
+#[test]
 fn json_doctor_outputs_checks() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
