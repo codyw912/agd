@@ -1643,6 +1643,35 @@ fn branches_omits_main_mirror_when_default_target_is_not_main() {
 }
 
 #[test]
+fn branches_omits_default_protected_branch_patterns() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    for branch in ["master", "trunk", "develop", "release/1.0", "stable/fix"] {
+        fixture.git_in(&workspace, ["switch", "main"]);
+        fixture.git_in(&workspace, ["switch", "-c", branch]);
+    }
+    fixture.git_in(&workspace, ["switch", "main"]);
+    fixture.git_in(&workspace, ["switch", "-c", "scratch/experiment"]);
+    fixture.write_file(&workspace, "scratch.txt", "scratch work\n");
+    fixture.git_in(&workspace, ["add", "scratch.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "scratch work"]);
+
+    let branches = fixture.agd_json(["--json", "branches"], &fixture.human);
+    assert_eq!(
+        branches["branches"],
+        serde_json::json!(["scratch/experiment"])
+    );
+}
+
+#[test]
 fn review_commands_reject_main_mirror_when_default_target_is_not_main() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -1673,6 +1702,31 @@ fn review_commands_reject_main_mirror_when_default_target_is_not_main() {
         fixture
             .agd()
             .args([command, "main"])
+            .current_dir(&fixture.human)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("agent branch is required"));
+    }
+}
+
+#[test]
+fn review_commands_reject_default_protected_branch_patterns() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "release/1.0"]);
+
+    for command in ["log", "diff", "files"] {
+        fixture
+            .agd()
+            .args([command, "release/1.0"])
             .current_dir(&fixture.human)
             .assert()
             .failure()
@@ -2255,6 +2309,41 @@ fn pr_rejects_main_mirror_when_default_target_is_not_main() {
 }
 
 #[test]
+fn pr_rejects_default_protected_branch_patterns() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    fixture.git_in(&workspace, ["switch", "-c", "release/1.0"]);
+
+    let gh_capture = fixture._tmp.path().join("gh-release-args.txt");
+    let fake_path = fixture.fake_gh_path(&gh_capture);
+    fixture
+        .agd()
+        .args(["pr", "release/1.0"])
+        .env("PATH", fake_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agent branch is required"));
+    assert!(!gh_capture.exists());
+    fixture.git_fails(
+        std::path::Path::new(remote),
+        ["rev-parse", "--verify", "refs/heads/release/1.0"],
+    );
+}
+
+#[test]
 fn sync_fast_forwards_default_target_from_human_checkout() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -2496,6 +2585,37 @@ fn sync_rebase_rejects_protected_branch_before_syncing() {
     fixture
         .agd()
         .args(["sync", "--rebase", "main"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agent branch is required"));
+
+    let workspace_main_after = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+    assert_eq!(workspace_main_after.trim(), workspace_main_before.trim());
+}
+
+#[test]
+fn sync_rebase_rejects_default_protected_branch_patterns() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    fixture.git_in(&workspace, ["switch", "-c", "release/1.0"]);
+    fixture.git_in(&workspace, ["switch", "main"]);
+    let workspace_main_before = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+
+    fixture
+        .agd()
+        .args(["sync", "--rebase", "release/1.0"])
         .current_dir(&fixture.human)
         .assert()
         .failure()
@@ -3082,6 +3202,34 @@ fn discard_force_still_rejects_protected_branch() {
 
     fixture.git_stdout(&workspace, ["rev-parse", "--verify", "main"]);
     assert!(workspace.join("dirty-main.txt").exists());
+}
+
+#[test]
+fn discard_force_rejects_default_protected_branch_patterns() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    fixture.git_in(&workspace, ["switch", "-c", "release/1.0"]);
+    fixture.write_file(&workspace, "dirty-release.txt", "dirty release\n");
+
+    fixture
+        .agd()
+        .args(["discard", "--force", "release/1.0"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "refusing to discard protected branch",
+        ));
+
+    fixture.git_stdout(&workspace, ["rev-parse", "--verify", "release/1.0"]);
+    assert!(workspace.join("dirty-release.txt").exists());
 }
 
 #[test]

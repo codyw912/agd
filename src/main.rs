@@ -1,4 +1,5 @@
 mod adoption;
+mod branch_policy;
 mod cleanup;
 mod cli;
 mod doctor;

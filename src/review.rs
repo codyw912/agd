@@ -1,3 +1,4 @@
+use crate::branch_policy;
 use crate::git;
 use crate::project::Project;
 use anyhow::{Context, Result};
@@ -130,7 +131,7 @@ fn resolve_branch(project: &Project, branch: Option<&str>, cwd: &Path) -> Result
             .trim()
             .to_string(),
     };
-    if branch.is_empty() || !is_review_branch(project, &branch) {
+    if !branch_policy::is_agent_branch(project, &branch) {
         anyhow::bail!("agent branch is required");
     }
     Ok(branch)
@@ -145,5 +146,5 @@ fn default_workspace(project: &Project) -> Result<&crate::project::Workspace> {
 }
 
 fn is_review_branch(project: &Project, branch: &str) -> bool {
-    branch != project.default_target && branch != "main"
+    branch_policy::is_agent_branch(project, branch)
 }

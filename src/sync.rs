@@ -1,3 +1,4 @@
+use crate::branch_policy;
 use crate::git;
 use crate::operation_lock::OperationLock;
 use crate::paths::AgdPaths;
@@ -167,7 +168,7 @@ fn rebase_agent_branch(project: &Project, workspace: &Path, branch: &str) -> Res
 }
 
 fn validate_rebase_branch(project: &Project, branch: &str) -> Result<()> {
-    if branch.is_empty() || branch == project.default_target || branch == "main" {
+    if !branch_policy::is_agent_branch(project, branch) {
         anyhow::bail!("agent branch is required");
     }
     Ok(())
