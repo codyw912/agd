@@ -16,6 +16,7 @@ mod provenance;
 mod pull_request;
 mod review;
 mod shell_command;
+mod status_report;
 mod sync;
 mod verify;
 mod workspace;

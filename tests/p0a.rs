@@ -591,6 +591,47 @@ fn status_identifies_human_checkout_and_agent_workspace() {
 }
 
 #[test]
+fn status_shows_pending_agent_branch_summaries() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/status-one"]);
+    fixture.write_file(&workspace, "one.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "one.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "status one"]);
+    fixture.write_file(&workspace, "two.txt", "two\n");
+    fixture.git_in(&workspace, ["add", "two.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "status two"]);
+
+    fixture.git_in(&workspace, ["switch", "main"]);
+    fixture.git_in(&workspace, ["switch", "-c", "agent/status-two"]);
+    fixture.write_file(&workspace, "three.txt", "three\n");
+    fixture.git_in(&workspace, ["add", "three.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "status three"]);
+
+    fixture
+        .agd()
+        .arg("status")
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Pending agent branches:"))
+        .stdout(predicate::str::contains("agent/status-one"))
+        .stdout(predicate::str::contains("2 commits"))
+        .stdout(predicate::str::contains("2 files changed"))
+        .stdout(predicate::str::contains("agent/status-two"))
+        .stdout(predicate::str::contains("1 commit"))
+        .stdout(predicate::str::contains("1 file changed"));
+}
+
+#[test]
 fn identity_shows_project_agent_identity() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -870,6 +911,50 @@ fn json_path_and_status_outputs_are_machine_readable() {
     assert_eq!(status["push"], "denied");
     assert_eq!(status["default_target"], "main");
     assert_eq!(status["current_branch"], "main");
+}
+
+#[test]
+fn json_status_outputs_agent_branch_summaries() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/status-json-one"]);
+    fixture.write_file(&workspace, "json-one.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "json-one.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "status json one"]);
+    fixture.write_file(&workspace, "json-two.txt", "two\n");
+    fixture.git_in(&workspace, ["add", "json-two.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "status json two"]);
+
+    fixture.git_in(&workspace, ["switch", "main"]);
+    fixture.git_in(&workspace, ["switch", "-c", "agent/status-json-two"]);
+    fixture.write_file(&workspace, "json-three.txt", "three\n");
+    fixture.git_in(&workspace, ["add", "json-three.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "status json three"]);
+
+    let status = fixture.agd_json(["--json", "status"], &fixture.human);
+    assert_eq!(
+        status["agent_branches"],
+        serde_json::json!([
+            {
+                "branch": "agent/status-json-one",
+                "commits": 2,
+                "files_changed": 2
+            },
+            {
+                "branch": "agent/status-json-two",
+                "commits": 1,
+                "files_changed": 1
+            }
+        ])
+    );
 }
 
 #[test]
