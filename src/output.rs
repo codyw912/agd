@@ -1,5 +1,6 @@
 use crate::git;
 use crate::project::{Project, ProjectContext};
+use crate::status_report;
 use anyhow::Result;
 use std::path::Path;
 
@@ -15,6 +16,18 @@ pub fn status(context: &ProjectContext, cwd: &Path) -> Result<()> {
     if let Some(workspace) = default_workspace(project) {
         println!("Agent workspace:");
         println!("  {}", workspace.path.display());
+    }
+    let agent_branches = status_report::agent_branches(project)?;
+    if !agent_branches.is_empty() {
+        println!("Pending agent branches:");
+        for branch in agent_branches {
+            println!(
+                "  {}  {}  {}",
+                branch.branch,
+                plural(branch.commits, "commit", "commits"),
+                plural(branch.files_changed, "file changed", "files changed")
+            );
+        }
     }
     println!("Agent identity:");
     println!(
@@ -35,6 +48,14 @@ pub fn status(context: &ProjectContext, cwd: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn plural(count: usize, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("{count} {singular}")
+    } else {
+        format!("{count} {plural}")
+    }
 }
 
 fn default_workspace(project: &Project) -> Option<&crate::project::Workspace> {

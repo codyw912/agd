@@ -1,6 +1,7 @@
 use crate::git;
 use crate::project::{Identity, Project, ProjectContext, UpstreamRemote, Workspace};
 use crate::review;
+use crate::status_report;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::path::Path;
@@ -19,6 +20,7 @@ struct StatusResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     upstream_remote: Option<UpstreamRemoteResponse>,
     workspace: WorkspaceResponse,
+    agent_branches: Vec<status_report::AgentBranchSummary>,
     agent_identity: IdentityResponse,
     signing: &'static str,
     push: &'static str,
@@ -121,6 +123,7 @@ pub fn status(context: &ProjectContext, cwd: &Path) -> Result<()> {
             .as_ref()
             .map(upstream_remote_response),
         workspace: workspace_response(workspace),
+        agent_branches: status_report::agent_branches(project)?,
         agent_identity: identity_response(&project.agent_identity),
         signing: "disabled",
         push: "denied",
