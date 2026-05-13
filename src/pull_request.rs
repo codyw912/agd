@@ -431,7 +431,8 @@ fn pr_body(
     };
 
     Ok(format!(
-        "## Summary\n- Agent branch: {branch}\n- Base branch: {}\n- Base commit: {}\n- Agent tip: {}\n\n## Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Provenance\n{AGD_PROVENANCE_HELP}\nAGD-Agent-Branch: {branch}\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\nAGD-Patch-SHA256: {patch_sha256}\n\n## Adoption Recommendation\nReview this PR, then adopt with `agd bless {branch}` if it should become signed human history.",
+        "## Summary\n- Publishes `{branch}` for review against `{}` without adopting it into human-owned history yet.\n- Shows the agent commit list and changed files so reviewers can evaluate the work normally.\n- Keeps AGD provenance below for traceability.\n\n## Agent Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Review Details\n- Agent branch: {branch}\n- Base branch: {}\n- Base commit: {}\n- Agent tip: {}\n\n## Adoption Recommendation\nReview this PR, then adopt with `agd bless {branch}` if it should become signed human history.\n\n## Provenance\n{AGD_PROVENANCE_HELP}\nAGD-Agent-Branch: {branch}\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\nAGD-Patch-SHA256: {patch_sha256}",
+        project.default_target,
         project.default_target,
         base_commit.trim(),
         agent_tip.trim(),
