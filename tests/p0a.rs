@@ -2316,9 +2316,16 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
     assert!(gh_args.contains("--base\nmain\n"));
     assert!(gh_args.contains("--head\nagent/pr-test\n"));
     assert!(gh_args.contains("--title\nagent/pr-test\n"));
+    assert!(gh_args.contains(
+        "Publishes `agent/pr-test` for review against `main` without adopting it into human-owned history yet."
+    ));
+    assert!(gh_args.contains("## Agent Commits\n- agent PR work"));
+    assert!(gh_args.contains("## Changed Files\n- pr.txt"));
+    assert!(gh_args.contains("## Review Details"));
     assert!(gh_args.contains("Agent branch: agent/pr-test"));
     assert!(gh_args.contains(&format!("Base commit: {}", base_commit.trim())));
     assert!(gh_args.contains(&format!("Agent tip: {}", agent_tip.trim())));
+    assert!(gh_args.contains("## Adoption Recommendation"));
     assert!(gh_args.contains("## Provenance"));
     assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-test"));
     assert!(gh_args.contains(&format!("AGD-Agent-Base: {}", base_commit.trim())));
