@@ -25,8 +25,8 @@ pub enum Command {
         repair: bool,
     },
     Sync {
-        #[arg(long)]
-        rebase: Option<String>,
+        #[arg(long, num_args = 0..=1)]
+        rebase: Option<Option<String>>,
     },
     Handoff {
         #[arg(long = "include-untracked")]
