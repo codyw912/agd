@@ -2279,7 +2279,9 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
     assert!(gh_args.contains(&format!("AGD-Agent-Base: {}", base_commit.trim())));
     assert!(gh_args.contains(&format!("AGD-Agent-Tip: {}", agent_tip.trim())));
     assert!(gh_args.contains(&format!("AGD-Patch-SHA256: {patch_sha256}")));
-    assert!(gh_args.contains("AGD provenance: https://github.com/codyw912/agd"));
+    assert!(gh_args.contains(
+        "This PR was prepared with AGD; provenance details are below. Learn more: https://github.com/codyw912/agd"
+    ));
     assert!(gh_args.contains("agent PR work"));
     assert!(gh_args.contains("pr.txt"));
 }
@@ -2340,7 +2342,9 @@ fn pr_bless_creates_human_adoption_branch_and_invokes_gh() {
     assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-bless"));
     assert!(gh_args.contains("AGD-Adoption: squash"));
     assert!(gh_args.contains("AGD-Patch-SHA256:"));
-    assert!(gh_args.contains("AGD provenance: https://github.com/codyw912/agd"));
+    assert!(gh_args.contains(
+        "This PR was prepared with AGD; provenance details are below. Learn more: https://github.com/codyw912/agd"
+    ));
 }
 
 #[test]

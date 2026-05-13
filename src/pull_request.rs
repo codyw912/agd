@@ -11,7 +11,8 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::process::{Command, Output};
 
-const AGD_PROVENANCE_HELP: &str = "AGD provenance: https://github.com/codyw912/agd";
+const AGD_PROVENANCE_HELP: &str =
+    "This PR was prepared with AGD; provenance details are below. Learn more: https://github.com/codyw912/agd";
 
 #[derive(Debug, Serialize)]
 pub struct PullRequestResult {
