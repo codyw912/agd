@@ -229,7 +229,11 @@ fn bless_squash(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<Bl
     }
 
     let trailers = trailers(project, prepared, "squash")?;
-    commit_squash(project, prepared.branch, trailers)?;
+    if let Err(error) = commit_squash(project, prepared.branch, trailers) {
+        anyhow::bail!(
+            "bless commit failed: {error}\nrun `agd bless --continue` after fixing the commit problem, or `agd bless --abort` to restore the human checkout"
+        );
+    }
     remove_bless_state(project)?;
 
     Ok(bless_result(prepared, "squash"))

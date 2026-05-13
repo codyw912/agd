@@ -6,6 +6,7 @@ use crate::project::Project;
 use crate::provenance;
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -78,7 +79,12 @@ pub fn open_blessed(
             target_branch: target_branch.clone(),
             adoption_branch,
         },
-    )?;
+    )
+    .map_err(|error| {
+        anyhow!(
+            "{error}\nrun `agd pr --continue` after fixing the adoption problem, or `agd bless --abort` to restore the human checkout"
+        )
+    })?;
     let adoption_branch = result
         .adoption_branch
         .as_ref()
@@ -322,15 +328,65 @@ fn adoption_pr_body(
 ) -> Result<String> {
     let adoption_commit = git::stdout(&project.human_checkout, ["rev-parse", "HEAD"])?;
     let commit_body = git::stdout(&project.human_checkout, ["log", "-1", "--format=%B"])?;
+    let trailers = parse_agd_trailers(&commit_body);
+    let commits = agent_commits(project, &trailers)?;
+    let files = agent_changed_files(project, &trailers)?;
 
     Ok(format!(
-        "## Summary\n- Human adoption branch: {adoption_branch}\n- Base branch: {}\n- Agent branch: {}\n- Adoption: {}\n- Adoption commit: {}\n\n## Provenance\n{AGD_PROVENANCE_HELP}\n{}",
-        base,
-        agent_branch,
-        adoption,
+        "## Summary\n- Adopts `{agent_branch}` into human-owned branch `{adoption_branch}` for review against `{base}`.\n- Uses `{adoption}` adoption in commit `{}`.\n- Keeps AGD provenance below for traceability.\n\n## Agent Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Adoption\n- Human adoption branch: {adoption_branch}\n- Base branch: {base}\n- Agent branch: {agent_branch}\n- Adoption: {adoption}\n- Adoption commit: {}\n\n## Provenance\n{AGD_PROVENANCE_HELP}\n{}",
+        adoption_commit.trim(),
         adoption_commit.trim(),
         commit_body.trim_end()
     ))
+}
+
+fn agent_commits(project: &Project, trailers: &BTreeMap<String, String>) -> Result<String> {
+    let Some(base) = trailers.get("AGD-Agent-Base") else {
+        return Ok("- See the adoption commit for agent commit details.".to_string());
+    };
+    let Some(tip) = trailers.get("AGD-Agent-Tip") else {
+        return Ok("- See the adoption commit for agent commit details.".to_string());
+    };
+    let range = format!("{base}..{tip}");
+    let commits = git::stdout(&project.human_checkout, ["log", "--format=- %s", &range])?;
+    if commits.trim().is_empty() {
+        return Ok("- No unique agent commits.".to_string());
+    }
+    Ok(commits.trim_end().to_string())
+}
+
+fn agent_changed_files(project: &Project, trailers: &BTreeMap<String, String>) -> Result<String> {
+    let Some(base) = trailers.get("AGD-Agent-Base") else {
+        return Ok("- See the adoption commit for changed file details.".to_string());
+    };
+    let Some(tip) = trailers.get("AGD-Agent-Tip") else {
+        return Ok("- See the adoption commit for changed file details.".to_string());
+    };
+    let range = format!("{base}...{tip}");
+    let files = git::stdout(&project.human_checkout, ["diff", "--name-only", &range])?;
+    let files = files
+        .lines()
+        .map(|file| format!("- {file}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if files.trim().is_empty() {
+        return Ok("- No changed files.".to_string());
+    }
+    Ok(files)
+}
+
+fn parse_agd_trailers(message: &str) -> BTreeMap<String, String> {
+    message
+        .lines()
+        .filter_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            let key = key.trim();
+            if !key.starts_with("AGD-") {
+                return None;
+            }
+            Some((key.to_string(), value.trim().to_string()))
+        })
+        .collect()
 }
 
 fn pr_body(
