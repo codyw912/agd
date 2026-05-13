@@ -351,9 +351,7 @@ fn main() -> Result<()> {
                 }
                 return Ok(());
             }
-            let Some(branch) = branch else {
-                bail!("bless requires a branch, or use bless --abort");
-            };
+            let branch = resolve_bless_branch(&context, &cwd, branch)?;
             if preserve && merge {
                 bail!("choose only one bless adoption mode");
             }
@@ -374,10 +372,10 @@ fn main() -> Result<()> {
                     target_branch: target
                         .unwrap_or_else(|| context.project().default_target.clone()),
                     adoption_branch: adoption_branch
-                        .unwrap_or_else(|| adoption::derive_adoption_branch(branch.as_str())),
+                        .unwrap_or_else(|| adoption::derive_adoption_branch(&branch)),
                 }
             };
-            let result = adoption::bless(&paths, context.project(), branch.as_str(), mode, target)?;
+            let result = adoption::bless(&paths, context.project(), &branch, mode, target)?;
             if json {
                 json_output::print(&result)?;
             } else {
@@ -402,6 +400,41 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn resolve_bless_branch(
+    context: &project::ProjectContext,
+    cwd: &std::path::Path,
+    branch: Option<String>,
+) -> Result<String> {
+    match branch {
+        Some(branch) => Ok(branch),
+        None => {
+            match context {
+                project::ProjectContext::HumanCheckout(_) => {
+                    bail!("bless requires a branch, or run it from an agent workspace on an agent branch");
+                }
+                project::ProjectContext::AgentWorkspace(project) => current_agent_branch(
+                    project,
+                    cwd,
+                    "current agent branch is required for bless without a branch",
+                ),
+            }
+        }
+    }
+}
+
+fn current_agent_branch(
+    project: &project::Project,
+    cwd: &std::path::Path,
+    error: &str,
+) -> Result<String> {
+    let branch = git::stdout(cwd, ["branch", "--show-current"])?;
+    let branch = branch.trim().to_string();
+    if !branch_policy::is_agent_branch(project, &branch) {
+        bail!("{error}");
+    }
+    Ok(branch)
+}
+
 fn resolve_sync_rebase(
     context: &project::ProjectContext,
     cwd: &std::path::Path,
@@ -414,14 +447,11 @@ fn resolve_sync_rebase(
             project::ProjectContext::HumanCheckout(_) => {
                 bail!("sync --rebase without a branch must be run from an agent workspace");
             }
-            project::ProjectContext::AgentWorkspace(project) => {
-                let branch = git::stdout(cwd, ["branch", "--show-current"])?;
-                let branch = branch.trim().to_string();
-                if !branch_policy::is_agent_branch(project, &branch) {
-                    bail!("current agent branch is required for sync --rebase without a branch");
-                }
-                Ok(Some(branch))
-            }
+            project::ProjectContext::AgentWorkspace(project) => Ok(Some(current_agent_branch(
+                project,
+                cwd,
+                "current agent branch is required for sync --rebase without a branch",
+            )?)),
         },
     }
 }
