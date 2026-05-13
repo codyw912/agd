@@ -518,16 +518,43 @@ fn lfs_check(project: &Project, workspace: &Path) -> Check {
 }
 
 fn lfs_pointer_files(label: &'static str, repo: &Path) -> Vec<String> {
-    let Ok(files) = git::stdout(
-        repo,
-        ["grep", "-Il", "https://git-lfs.github.com/spec/v1", "--"],
-    ) else {
+    let Ok(files) = git::stdout(repo, ["ls-files"]) else {
         return Vec::new();
     };
     files
         .lines()
+        .filter(|file| {
+            fs::read_to_string(repo.join(file)).is_ok_and(|contents| is_lfs_pointer(&contents))
+        })
         .map(|file| format!("{label} {file} looks like Git LFS pointer"))
         .collect()
+}
+
+fn is_lfs_pointer(contents: &str) -> bool {
+    let mut lines = contents.lines();
+    if lines.next() != Some("version https://git-lfs.github.com/spec/v1") {
+        return false;
+    }
+
+    let mut has_oid = false;
+    let mut has_size = false;
+    for line in lines {
+        if let Some(oid) = line.strip_prefix("oid sha256:") {
+            if has_oid || oid.len() != 64 || !oid.chars().all(|c| c.is_ascii_hexdigit()) {
+                return false;
+            }
+            has_oid = true;
+        } else if let Some(size) = line.strip_prefix("size ") {
+            if has_size || size.is_empty() || !size.chars().all(|c| c.is_ascii_digit()) {
+                return false;
+            }
+            has_size = true;
+        } else {
+            return false;
+        }
+    }
+
+    has_oid && has_size
 }
 
 fn checkout_files(project: &Project, workspace: &Path, file: &str) -> Vec<(&'static str, PathBuf)> {
