@@ -280,13 +280,23 @@ fn main() -> Result<()> {
             branch,
             preserve,
             merge,
+            target,
+            adoption_branch,
+            direct,
             r#continue,
             abort,
         }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             if r#continue {
-                if abort || branch.is_some() || preserve || merge {
+                if abort
+                    || branch.is_some()
+                    || preserve
+                    || merge
+                    || target.is_some()
+                    || adoption_branch.is_some()
+                    || direct
+                {
                     bail!("bless --continue cannot be combined with other bless options");
                 }
                 let result = adoption::continue_bless(&paths, context.project())?;
@@ -298,7 +308,13 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             if abort {
-                if branch.is_some() || preserve || merge {
+                if branch.is_some()
+                    || preserve
+                    || merge
+                    || target.is_some()
+                    || adoption_branch.is_some()
+                    || direct
+                {
                     bail!("bless --abort cannot be combined with branch adoption options");
                 }
                 let result = adoption::abort(context.project())?;
@@ -315,6 +331,9 @@ fn main() -> Result<()> {
             if preserve && merge {
                 bail!("choose only one bless adoption mode");
             }
+            if direct && (target.is_some() || adoption_branch.is_some()) {
+                bail!("bless --direct cannot be combined with --target or --branch");
+            }
             let mode = if merge {
                 adoption::AdoptionMode::Merge
             } else if preserve {
@@ -322,14 +341,29 @@ fn main() -> Result<()> {
             } else {
                 adoption::AdoptionMode::Squash
             };
-            let result = adoption::bless(&paths, context.project(), branch.as_str(), mode)?;
+            let target = if direct {
+                adoption::AdoptionTarget::Direct
+            } else {
+                adoption::AdoptionTarget::Branch {
+                    target_branch: target
+                        .unwrap_or_else(|| context.project().default_target.clone()),
+                    adoption_branch: adoption_branch
+                        .unwrap_or_else(|| adoption::derive_adoption_branch(branch.as_str())),
+                }
+            };
+            let result = adoption::bless(&paths, context.project(), branch.as_str(), mode, target)?;
             if json {
                 json_output::print(&result)?;
             } else {
+                let location = result
+                    .adoption_branch
+                    .as_ref()
+                    .map(|branch| format!(" onto {branch}"))
+                    .unwrap_or_default();
                 match result.adoption {
-                    "merge" => println!("Merged {}", result.branch),
-                    "preserve" => println!("Preserved {}", result.branch),
-                    _ => println!("Blessed {}", result.branch),
+                    "merge" => println!("Merged {}{}", result.branch, location),
+                    "preserve" => println!("Preserved {}{}", result.branch, location),
+                    _ => println!("Blessed {}{}", result.branch, location),
                 }
             }
         }

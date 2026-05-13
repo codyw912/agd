@@ -15,6 +15,14 @@ pub enum AdoptionMode {
     Merge,
 }
 
+pub enum AdoptionTarget {
+    Direct,
+    Branch {
+        target_branch: String,
+        adoption_branch: String,
+    },
+}
+
 #[derive(Debug, Serialize)]
 pub struct BlessAbortResult {
     pub status: &'static str,
@@ -32,6 +40,8 @@ pub struct BlessResult {
     pub status: &'static str,
     pub branch: String,
     pub adoption: &'static str,
+    pub target_branch: String,
+    pub adoption_branch: Option<String>,
 }
 
 pub fn bless(
@@ -39,13 +49,18 @@ pub fn bless(
     project: &Project,
     branch: &str,
     mode: AdoptionMode,
+    target: AdoptionTarget,
 ) -> Result<BlessResult> {
-    let prepared = prepare(paths, project, branch)?;
+    let prepared = prepare(paths, project, branch, target)?;
     match mode {
         AdoptionMode::Squash => bless_squash(project, &prepared),
         AdoptionMode::Preserve => bless_preserve(project, &prepared),
         AdoptionMode::Merge => bless_merge(project, &prepared),
     }
+}
+
+pub fn derive_adoption_branch(branch: &str) -> String {
+    branch.strip_prefix("agent/").unwrap_or(branch).to_string()
 }
 
 pub fn abort(project: &Project) -> Result<BlessAbortResult> {
@@ -84,6 +99,8 @@ struct PreparedAdoption<'a> {
     fetched_ref: String,
     base: String,
     tip: String,
+    target_branch: String,
+    adoption_branch: Option<String>,
     _lock: OperationLock,
 }
 
@@ -91,6 +108,7 @@ fn prepare<'a>(
     paths: &AgdPaths,
     project: &'a Project,
     branch: &'a str,
+    target: AdoptionTarget,
 ) -> Result<PreparedAdoption<'a>> {
     let workspace = project
         .workspaces
@@ -104,6 +122,26 @@ fn prepare<'a>(
     let lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "bless")?;
     let safety_ref = format!("refs/agd/safety/{}", lock.operation_id());
     git::run(&project.human_checkout, ["update-ref", &safety_ref, "HEAD"])?;
+
+    let (target_branch, adoption_branch) = match target {
+        AdoptionTarget::Direct => (
+            git::stdout(&project.human_checkout, ["branch", "--show-current"])?
+                .trim()
+                .to_string(),
+            None,
+        ),
+        AdoptionTarget::Branch {
+            target_branch,
+            adoption_branch,
+        } => {
+            ensure_adoption_branch_available(project, &adoption_branch)?;
+            git::run(
+                &project.human_checkout,
+                ["switch", "-c", &adoption_branch, &target_branch],
+            )?;
+            (target_branch, Some(adoption_branch))
+        }
+    };
 
     let fetched_ref = format!("refs/agd/agent/{branch}");
     let fetch_spec = format!("refs/heads/{branch}:{fetched_ref}");
@@ -128,8 +166,31 @@ fn prepare<'a>(
         fetched_ref,
         base: base.trim().to_string(),
         tip: tip.trim().to_string(),
+        target_branch,
+        adoption_branch,
         _lock: lock,
     })
+}
+
+fn ensure_adoption_branch_available(project: &Project, branch: &str) -> Result<()> {
+    if git::run(
+        &project.human_checkout,
+        ["check-ref-format", "--branch", branch],
+    )
+    .is_err()
+    {
+        anyhow::bail!("invalid adoption branch: {branch}");
+    }
+    let refname = format!("refs/heads/{branch}");
+    if git::run(
+        &project.human_checkout,
+        ["show-ref", "--verify", "--quiet", &refname],
+    )
+    .is_ok()
+    {
+        anyhow::bail!("adoption branch already exists: {branch}");
+    }
+    Ok(())
 }
 
 fn bless_squash(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<BlessResult> {
@@ -147,7 +208,7 @@ fn bless_squash(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<Bl
     commit_squash(project, prepared.branch, trailers)?;
     remove_bless_state(project)?;
 
-    Ok(bless_result(prepared.branch, "squash"))
+    Ok(bless_result(prepared, "squash"))
 }
 
 fn commit_squash(project: &Project, branch: &str, trailers: String) -> Result<()> {
@@ -181,11 +242,11 @@ fn bless_merge(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<Ble
         ],
     )?;
 
-    Ok(bless_result(prepared.branch, "merge"))
+    Ok(bless_result(prepared, "merge"))
 }
 
 fn bless_preserve(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<BlessResult> {
-    let range = format!("{}..{}", project.default_target, prepared.fetched_ref);
+    let range = format!("{}..{}", prepared.base, prepared.fetched_ref);
     let commits = git::stdout(&project.human_checkout, ["rev-list", "--reverse", &range])?;
     let commits: Vec<_> = commits.lines().map(str::to_string).collect();
     if commits.is_empty() {
@@ -225,14 +286,16 @@ fn bless_preserve(project: &Project, prepared: &PreparedAdoption<'_>) -> Result<
         )?;
     }
 
-    Ok(bless_result(prepared.branch, "preserve"))
+    Ok(bless_result(prepared, "preserve"))
 }
 
-fn bless_result(branch: &str, adoption: &'static str) -> BlessResult {
+fn bless_result(prepared: &PreparedAdoption<'_>, adoption: &'static str) -> BlessResult {
     BlessResult {
         status: "blessed",
-        branch: branch.to_string(),
+        branch: prepared.branch.to_string(),
         adoption,
+        target_branch: prepared.target_branch.clone(),
+        adoption_branch: prepared.adoption_branch.clone(),
     }
 }
 
