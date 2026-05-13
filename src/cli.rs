@@ -40,6 +40,8 @@ pub enum Command {
         branch: Option<String>,
     },
     Pr {
+        #[arg(long)]
+        bless: bool,
         branch: Option<String>,
     },
     Verify {
