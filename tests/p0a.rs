@@ -2315,7 +2315,7 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
     assert!(gh_args.contains("create\n"));
     assert!(gh_args.contains("--base\nmain\n"));
     assert!(gh_args.contains("--head\nagent/pr-test\n"));
-    assert!(gh_args.contains("--title\nagent/pr-test\n"));
+    assert!(gh_args.contains("--title\nagent PR work\n"));
     assert!(gh_args.contains(
         "Publishes `agent/pr-test` for review against `main` without adopting it into human-owned history yet."
     ));
@@ -2389,7 +2389,7 @@ fn pr_bless_creates_human_adoption_branch_and_invokes_gh() {
     let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
     assert!(gh_args.contains("--base\nmain\n"));
     assert!(gh_args.contains("--head\npr-bless\n"));
-    assert!(gh_args.contains("--title\npr-bless\n"));
+    assert!(gh_args.contains("--title\nagent PR bless work\n"));
     assert!(gh_args.contains(
         "Adopts `agent/pr-bless` into human-owned branch `pr-bless` for review against `main`."
     ));
@@ -2464,7 +2464,7 @@ fn pr_bless_uses_explicit_target_and_adoption_branch() {
     let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
     assert!(gh_args.contains("--base\nrelease\n"));
     assert!(gh_args.contains("--head\ncody/pr-bless\n"));
-    assert!(gh_args.contains("--title\ncody/pr-bless\n"));
+    assert!(gh_args.contains("--title\nagent PR bless work\n"));
     assert!(gh_args.contains("Human adoption branch: cody/pr-bless"));
     assert!(gh_args.contains("Base branch: release"));
     assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-bless"));
@@ -2540,7 +2540,7 @@ fn pr_continue_finishes_interrupted_blessed_pr() {
     let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
     assert!(gh_args.contains("--base\nrelease\n"));
     assert!(gh_args.contains("--head\ncody/pr-continue\n"));
-    assert!(gh_args.contains("--title\ncody/pr-continue\n"));
+    assert!(gh_args.contains("--title\nagent PR continue work\n"));
     assert!(gh_args.contains(
         "Adopts `agent/pr-continue` into human-owned branch `cody/pr-continue` for review against `release`."
     ));
@@ -2804,7 +2804,7 @@ fn pr_uses_glab_when_gh_is_missing() {
     assert!(glab_args.contains("create\n"));
     assert!(glab_args.contains("--target-branch\nmain\n"));
     assert!(glab_args.contains("--source-branch\nagent/pr-glab\n"));
-    assert!(glab_args.contains("--title\nagent/pr-glab\n"));
+    assert!(glab_args.contains("--title\nagent PR glab work\n"));
     assert!(glab_args.contains("--description\n"));
     assert!(glab_args.contains("agent PR glab work"));
 }

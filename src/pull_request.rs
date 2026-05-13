@@ -41,8 +41,10 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullR
     let push_spec = format!("{pr_ref}:refs/heads/{branch}");
     git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
 
+    let title = title_from_range(project, &project.default_target, &pr_ref, &branch)?;
     let body = pr_body(project, workspace, &branch)?;
-    let Some(output) = create_pull_request(project, &branch, &project.default_target, &body)?
+    let Some(output) =
+        create_pull_request(project, &branch, &project.default_target, &title, &body)?
     else {
         return Ok(PullRequestResult {
             branch: branch.clone(),
@@ -100,7 +102,10 @@ pub fn open_blessed(
         &result.branch,
         result.adoption,
     )?;
-    let Some(output) = create_pull_request(project, adoption_branch, &target_branch, &body)? else {
+    let title = adoption_pr_title(project, adoption_branch)?;
+    let Some(output) =
+        create_pull_request(project, adoption_branch, &target_branch, &title, &body)?
+    else {
         return Ok(PullRequestResult {
             branch: adoption_branch.clone(),
             url: None,
@@ -132,7 +137,14 @@ pub fn continue_blessed(paths: &AgdPaths, project: &Project) -> Result<PullReque
         &result.branch,
         &result.adoption,
     )?;
-    let Some(output) = create_pull_request(project, adoption_branch, &result.target_branch, &body)?
+    let title = adoption_pr_title(project, adoption_branch)?;
+    let Some(output) = create_pull_request(
+        project,
+        adoption_branch,
+        &result.target_branch,
+        &title,
+        &body,
+    )?
     else {
         return Ok(PullRequestResult {
             branch: adoption_branch.clone(),
@@ -157,23 +169,26 @@ fn create_pull_request(
     project: &Project,
     branch: &str,
     base: &str,
+    title: &str,
     body: &str,
 ) -> Result<Option<Output>> {
     if is_gitlab_remote(project) {
-        return match create_gitlab_mr(project, branch, base, body) {
+        return match create_gitlab_mr(project, branch, base, title, body) {
             Ok(output) => Ok(Some(output)),
             Err(PrCreateError::MissingCli) => Ok(None),
             Err(PrCreateError::Failure(error)) => Err(error),
         };
     }
 
-    match create_github_pr(project, branch, base, body) {
+    match create_github_pr(project, branch, base, title, body) {
         Ok(output) => Ok(Some(output)),
-        Err(PrCreateError::MissingCli) => match create_gitlab_mr(project, branch, base, body) {
-            Ok(output) => Ok(Some(output)),
-            Err(PrCreateError::MissingCli) => Ok(None),
-            Err(PrCreateError::Failure(error)) => Err(error),
-        },
+        Err(PrCreateError::MissingCli) => {
+            match create_gitlab_mr(project, branch, base, title, body) {
+                Ok(output) => Ok(Some(output)),
+                Err(PrCreateError::MissingCli) => Ok(None),
+                Err(PrCreateError::Failure(error)) => Err(error),
+            }
+        }
         Err(PrCreateError::Failure(error)) => Err(error),
     }
 }
@@ -186,11 +201,12 @@ fn create_github_pr(
     project: &Project,
     branch: &str,
     base: &str,
+    title: &str,
     body: &str,
 ) -> Result<Output, PrCreateError> {
     let output = match Command::new("gh")
         .args([
-            "pr", "create", "--base", base, "--head", branch, "--title", branch, "--body", body,
+            "pr", "create", "--base", base, "--head", branch, "--title", title, "--body", body,
         ])
         .current_dir(&project.human_checkout)
         .output()
@@ -212,6 +228,7 @@ fn create_gitlab_mr(
     project: &Project,
     branch: &str,
     base: &str,
+    title: &str,
     body: &str,
 ) -> Result<Output, PrCreateError> {
     let output = match Command::new("glab")
@@ -223,7 +240,7 @@ fn create_gitlab_mr(
             "--source-branch",
             branch,
             "--title",
-            branch,
+            title,
             "--description",
             body,
         ])
@@ -317,6 +334,39 @@ fn percent_encode_component(value: &str) -> String {
             _ => format!("%{byte:02X}"),
         })
         .collect()
+}
+
+fn adoption_pr_title(project: &Project, fallback: &str) -> Result<String> {
+    let commit_body = git::stdout(&project.human_checkout, ["log", "-1", "--format=%B"])?;
+    let trailers = parse_agd_trailers(&commit_body);
+    title_from_trailers(project, &trailers, fallback)
+}
+
+fn title_from_trailers(
+    project: &Project,
+    trailers: &BTreeMap<String, String>,
+    fallback: &str,
+) -> Result<String> {
+    let Some(base) = trailers.get("AGD-Agent-Base") else {
+        return Ok(fallback.to_string());
+    };
+    let Some(tip) = trailers.get("AGD-Agent-Tip") else {
+        return Ok(fallback.to_string());
+    };
+    title_from_range(project, base, tip, fallback)
+}
+
+fn title_from_range(project: &Project, base: &str, tip: &str, fallback: &str) -> Result<String> {
+    let range = format!("{base}..{tip}");
+    let subjects = git::stdout(&project.human_checkout, ["log", "--format=%s", &range])?;
+    let subjects = subjects
+        .lines()
+        .filter(|subject| !subject.trim().is_empty())
+        .collect::<Vec<_>>();
+    if subjects.len() == 1 {
+        return Ok(subjects[0].to_string());
+    }
+    Ok(fallback.to_string())
 }
 
 fn adoption_pr_body(
