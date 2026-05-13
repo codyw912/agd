@@ -87,12 +87,51 @@ pub fn open_blessed(
     let push_spec = format!("refs/heads/{adoption_branch}:refs/heads/{adoption_branch}");
     git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
 
-    let body = adoption_pr_body(project, &target_branch, &result)?;
+    let body = adoption_pr_body(
+        project,
+        &target_branch,
+        adoption_branch,
+        &result.branch,
+        result.adoption,
+    )?;
     let Some(output) = create_pull_request(project, adoption_branch, &target_branch, &body)? else {
         return Ok(PullRequestResult {
             branch: adoption_branch.clone(),
             url: None,
             next_step: Some(next_step(project, adoption_branch, &target_branch)),
+        });
+    };
+    let url = String::from_utf8(output.stdout).context("PR tool output was not utf-8")?;
+    Ok(PullRequestResult {
+        branch: adoption_branch.clone(),
+        url: Some(url.trim().to_string()),
+        next_step: None,
+    })
+}
+
+pub fn continue_blessed(paths: &AgdPaths, project: &Project) -> Result<PullRequestResult> {
+    let result = adoption::continue_bless(paths, project)?;
+    let adoption_branch = result
+        .adoption_branch
+        .as_ref()
+        .context("continued bless did not create an adoption branch")?;
+
+    let push_spec = format!("refs/heads/{adoption_branch}:refs/heads/{adoption_branch}");
+    git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
+
+    let body = adoption_pr_body(
+        project,
+        &result.target_branch,
+        adoption_branch,
+        &result.branch,
+        &result.adoption,
+    )?;
+    let Some(output) = create_pull_request(project, adoption_branch, &result.target_branch, &body)?
+    else {
+        return Ok(PullRequestResult {
+            branch: adoption_branch.clone(),
+            url: None,
+            next_step: Some(next_step(project, adoption_branch, &result.target_branch)),
         });
     };
     let url = String::from_utf8(output.stdout).context("PR tool output was not utf-8")?;
@@ -277,20 +316,18 @@ fn percent_encode_component(value: &str) -> String {
 fn adoption_pr_body(
     project: &Project,
     base: &str,
-    result: &adoption::BlessResult,
+    adoption_branch: &str,
+    agent_branch: &str,
+    adoption: &str,
 ) -> Result<String> {
-    let adoption_branch = result
-        .adoption_branch
-        .as_ref()
-        .context("bless did not create an adoption branch")?;
     let adoption_commit = git::stdout(&project.human_checkout, ["rev-parse", "HEAD"])?;
     let commit_body = git::stdout(&project.human_checkout, ["log", "-1", "--format=%B"])?;
 
     Ok(format!(
         "## Summary\n- Human adoption branch: {adoption_branch}\n- Base branch: {}\n- Agent branch: {}\n- Adoption: {}\n- Adoption commit: {}\n\n## Provenance\n{AGD_PROVENANCE_HELP}\n{}",
         base,
-        result.branch,
-        result.adoption,
+        agent_branch,
+        adoption,
         adoption_commit.trim(),
         commit_body.trim_end()
     ))

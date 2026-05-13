@@ -76,6 +76,12 @@ Use `--branch <name>` and `--target <branch>` with `--bless` when the adoption b
 agd pr --bless --branch cody/refactor-auth --target release agent/refactor-auth
 ```
 
+If signing or conflict resolution interrupts a blessed PR operation, resolve the issue and continue it:
+
+```bash
+agd pr --continue
+```
+
 ## What AGD Sets Up
 
 `agd init` creates a managed clone under your AGD home, records project metadata, and configures the agent workspace with:
@@ -109,6 +115,7 @@ agd bless --continue
 agd bless --abort
 agd pr [branch]
 agd pr --bless [--target <branch>] [--branch <name>] [branch]
+agd pr --continue
 agd verify <commit>
 agd shell
 agd discard [--force] <branch>

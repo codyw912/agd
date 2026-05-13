@@ -42,6 +42,8 @@ pub enum Command {
     Pr {
         #[arg(long)]
         bless: bool,
+        #[arg(long = "continue")]
+        r#continue: bool,
         #[arg(long)]
         target: Option<String>,
         #[arg(long = "branch")]

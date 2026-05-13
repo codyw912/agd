@@ -33,6 +33,9 @@ pub struct BlessContinueResult {
     pub status: &'static str,
     pub branch: String,
     pub adoption: String,
+    pub target_branch: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adoption_branch: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,6 +80,22 @@ pub fn continue_bless(paths: &AgdPaths, project: &Project) -> Result<BlessContin
     if state.adoption != "squash" {
         anyhow::bail!("only squash bless operations can be continued");
     }
+    let target_branch = state
+        .target_branch
+        .clone()
+        .unwrap_or_else(|| project.default_target.clone());
+    let adoption_branch = match state.adoption_branch.clone() {
+        Some(branch) => Some(branch),
+        None => {
+            let current = git::stdout(&project.human_checkout, ["branch", "--show-current"])?;
+            let current = current.trim();
+            if current.is_empty() || current == target_branch {
+                None
+            } else {
+                Some(current.to_string())
+            }
+        }
+    };
     let _lock = OperationLock::acquire(paths, &project.project_id, &state.workspace_id, "bless")?;
     let trailers = trailers_from_parts(
         &project.human_checkout,
@@ -93,6 +112,8 @@ pub fn continue_bless(paths: &AgdPaths, project: &Project) -> Result<BlessContin
         status: "continued",
         branch: state.branch,
         adoption: state.adoption,
+        target_branch,
+        adoption_branch,
     })
 }
 
@@ -344,6 +365,8 @@ struct BlessState {
     base: String,
     tip: String,
     adoption: String,
+    target_branch: Option<String>,
+    adoption_branch: Option<String>,
 }
 
 impl BlessState {
@@ -354,6 +377,8 @@ impl BlessState {
             base: prepared.base.clone(),
             tip: prepared.tip.clone(),
             adoption: adoption.to_string(),
+            target_branch: Some(prepared.target_branch.clone()),
+            adoption_branch: prepared.adoption_branch.clone(),
         }
     }
 }
