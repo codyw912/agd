@@ -1,5 +1,7 @@
+use crate::adoption::{self, AdoptionMode, AdoptionTarget};
 use crate::branch_policy;
 use crate::git;
+use crate::paths::AgdPaths;
 use crate::project::Project;
 use crate::provenance;
 use anyhow::{anyhow, Context, Result};
@@ -46,6 +48,48 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullR
     let url = String::from_utf8(output.stdout).context("PR tool output was not utf-8")?;
     Ok(PullRequestResult {
         branch,
+        url: Some(url.trim().to_string()),
+        next_step: None,
+    })
+}
+
+pub fn open_blessed(
+    paths: &AgdPaths,
+    project: &Project,
+    branch: Option<&str>,
+    cwd: &Path,
+) -> Result<PullRequestResult> {
+    let branch = resolve_branch(project, branch, cwd)?;
+    let adoption_branch = adoption::derive_adoption_branch(&branch);
+    let result = adoption::bless(
+        paths,
+        project,
+        &branch,
+        AdoptionMode::Squash,
+        AdoptionTarget::Branch {
+            target_branch: project.default_target.clone(),
+            adoption_branch,
+        },
+    )?;
+    let adoption_branch = result
+        .adoption_branch
+        .as_ref()
+        .context("bless did not create an adoption branch")?;
+
+    let push_spec = format!("refs/heads/{adoption_branch}:refs/heads/{adoption_branch}");
+    git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
+
+    let body = adoption_pr_body(project, &result)?;
+    let Some(output) = create_pull_request(project, adoption_branch, &body)? else {
+        return Ok(PullRequestResult {
+            branch: adoption_branch.clone(),
+            url: None,
+            next_step: Some(next_step(project, adoption_branch)),
+        });
+    };
+    let url = String::from_utf8(output.stdout).context("PR tool output was not utf-8")?;
+    Ok(PullRequestResult {
+        branch: adoption_branch.clone(),
         url: Some(url.trim().to_string()),
         next_step: None,
     })
@@ -216,6 +260,24 @@ fn percent_encode_component(value: &str) -> String {
             _ => format!("%{byte:02X}"),
         })
         .collect()
+}
+
+fn adoption_pr_body(project: &Project, result: &adoption::BlessResult) -> Result<String> {
+    let adoption_branch = result
+        .adoption_branch
+        .as_ref()
+        .context("bless did not create an adoption branch")?;
+    let adoption_commit = git::stdout(&project.human_checkout, ["rev-parse", "HEAD"])?;
+    let commit_body = git::stdout(&project.human_checkout, ["log", "-1", "--format=%B"])?;
+
+    Ok(format!(
+        "## Summary\n- Human adoption branch: {adoption_branch}\n- Base branch: {}\n- Agent branch: {}\n- Adoption: {}\n- Adoption commit: {}\n\n## Provenance\n{}",
+        project.default_target,
+        result.branch,
+        result.adoption,
+        adoption_commit.trim(),
+        commit_body.trim_end()
+    ))
 }
 
 fn pr_body(

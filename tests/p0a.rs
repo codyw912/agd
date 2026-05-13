@@ -2284,6 +2284,64 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
 }
 
 #[test]
+fn pr_bless_creates_human_adoption_branch_and_invokes_gh() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-bless"]);
+    fixture.write_file(&workspace, "pr-bless.txt", "agent PR bless work\n");
+    fixture.git_in(&workspace, ["add", "pr-bless.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent PR bless work"]);
+
+    let gh_capture = fixture._tmp.path().join("gh-bless-args.txt");
+    let fake_path = fixture.fake_gh_path(&gh_capture);
+    fixture
+        .agd()
+        .args(["pr", "--bless", "agent/pr-bless"])
+        .env("PATH", fake_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("https://example.test/pr/1"));
+
+    fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["rev-parse", "--verify", "refs/heads/pr-bless"],
+    );
+    let agent_branch_exists = StdCommand::new("git")
+        .args(["rev-parse", "--verify", "refs/heads/agent/pr-bless"])
+        .current_dir(remote)
+        .output()
+        .expect("git rev-parse")
+        .status
+        .success();
+    assert!(!agent_branch_exists);
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "pr-bless");
+    let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
+    assert!(gh_args.contains("--base\nmain\n"));
+    assert!(gh_args.contains("--head\npr-bless\n"));
+    assert!(gh_args.contains("--title\npr-bless\n"));
+    assert!(gh_args.contains("Human adoption branch: pr-bless"));
+    assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-bless"));
+    assert!(gh_args.contains("AGD-Adoption: squash"));
+    assert!(gh_args.contains("AGD-Patch-SHA256:"));
+}
+
+#[test]
 fn json_pr_outputs_created_pull_request() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

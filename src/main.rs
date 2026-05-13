@@ -172,10 +172,14 @@ fn main() -> Result<()> {
                 review::diff(context.project(), branch.as_deref(), &cwd)?;
             }
         }
-        Some(Command::Pr { branch }) => {
+        Some(Command::Pr { bless, branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let result = pull_request::open(context.project(), branch.as_deref(), &cwd)?;
+            let result = if bless {
+                pull_request::open_blessed(&paths, context.project(), branch.as_deref(), &cwd)?
+            } else {
+                pull_request::open(context.project(), branch.as_deref(), &cwd)?
+            };
             if json {
                 json_output::print(&result)?;
             } else if let Some(url) = result.url {
