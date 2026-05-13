@@ -72,6 +72,12 @@ pub enum Command {
         preserve: bool,
         #[arg(long)]
         merge: bool,
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long = "branch")]
+        adoption_branch: Option<String>,
+        #[arg(long)]
+        direct: bool,
         #[arg(long = "continue")]
         r#continue: bool,
         #[arg(long)]

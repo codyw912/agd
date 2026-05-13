@@ -46,6 +46,8 @@ Adopt the branch:
 agd bless agent/refactor-auth
 ```
 
+By default, `bless` creates a human-owned adoption branch from the configured target branch. For example, `agent/refactor-auth` adopts onto `refactor-auth`, leaving `main` ready for a normal protected-branch PR. Use `--branch <name>` for project branch naming policies, `--target <branch>` for a non-default base branch, or `--direct` when you explicitly want to adopt onto the current human branch.
+
 ## What AGD Sets Up
 
 `agd init` creates a managed clone under your AGD home, records project metadata, and configures the agent workspace with:
@@ -73,7 +75,8 @@ agd branches
 agd log [branch]
 agd diff [branch]
 agd files [branch]
-agd bless [--preserve | --merge] <branch>
+agd bless [--preserve | --merge] [--target <branch>] [--branch <name>] <branch>
+agd bless --direct [--preserve | --merge] <branch>
 agd bless --continue
 agd bless --abort
 agd pr [branch]
@@ -91,7 +94,7 @@ Most commands also support `--json` for machine-readable output.
 
 AGD separates authority, not execution.
 
-Agent work happens in a separate Git clone with a local agent identity and no access to your human signing key. The human approval boundary is explicit: review the branch, then bless it, preserve it, merge it, or open a PR. AGD also blocks default pushes from the agent workspace and treats protected branch names such as `main`, `master`, `trunk`, `develop`, `release/*`, `stable/*`, `production/*`, and `prod/*` as non-agent branches.
+Agent work happens in a separate Git clone with a local agent identity and no access to your human signing key. The human approval boundary is explicit: review the branch, then bless it onto a human adoption branch, preserve it, merge it, or explicitly adopt it directly. AGD also blocks default pushes from the agent workspace and treats protected branch names such as `main`, `master`, `trunk`, `develop`, `release/*`, `stable/*`, `production/*`, and `prod/*` as non-agent branches.
 
 AGD does not sandbox filesystems, networks, credentials, or processes. Use separate sandboxing if you need those controls.
 

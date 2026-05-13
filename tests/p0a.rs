@@ -958,6 +958,184 @@ fn json_status_outputs_agent_branch_summaries() {
 }
 
 #[test]
+fn bless_defaults_to_human_adoption_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let main_before = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/refactor-auth"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Blessed agent/refactor-auth onto refactor-auth",
+        ));
+
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "refactor-auth");
+    let main_after = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+    assert_eq!(main_after, main_before);
+    let subject = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%s"]);
+    assert!(subject.contains("Adopt agent/refactor-auth"));
+}
+
+#[test]
+fn bless_uses_explicit_human_adoption_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+
+    fixture
+        .agd()
+        .args([
+            "bless",
+            "agent/refactor-auth",
+            "--branch",
+            "cody/refactor-auth",
+        ])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Blessed agent/refactor-auth onto cody/refactor-auth",
+        ));
+
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "cody/refactor-auth");
+}
+
+#[test]
+fn bless_uses_explicit_target_branch_for_adoption_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture.git(["switch", "-c", "release"]);
+    fixture.write_file(&fixture.human, "release.txt", "release-only\n");
+    fixture.git(["add", "release.txt"]);
+    fixture.git(["commit", "-m", "prepare release"]);
+    fixture.git(["switch", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+
+    let main_before = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+    fixture
+        .agd()
+        .args(["bless", "agent/refactor-auth", "--target", "release"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "refactor-auth");
+    let release_file = fs::read_to_string(fixture.human.join("release.txt")).expect("release file");
+    assert_eq!(release_file, "release-only\n");
+    let main_after = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+    assert_eq!(main_after, main_before);
+}
+
+#[test]
+fn bless_direct_adopts_onto_current_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/refactor-auth", "--direct"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Blessed agent/refactor-auth\n"));
+
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "main");
+    let main_count = fixture.git_stdout(&fixture.human, ["rev-list", "--count", "main"]);
+    assert_eq!(main_count.trim(), "2");
+}
+
+#[test]
+fn bless_refuses_existing_human_adoption_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture.git(["branch", "refactor-auth"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/refactor-auth"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "adoption branch already exists: refactor-auth",
+        ));
+
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "main");
+}
+
+#[test]
 fn bless_squashes_agent_branch_into_one_human_commit() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -1020,6 +1198,8 @@ fn json_bless_outputs_blessed_status() {
     assert_eq!(response["status"], "blessed");
     assert_eq!(response["branch"], "agent/refactor-auth");
     assert_eq!(response["adoption"], "squash");
+    assert_eq!(response["target_branch"], "main");
+    assert_eq!(response["adoption_branch"], "refactor-auth");
 
     let status = fixture.git_stdout(&fixture.human, ["status", "--porcelain"]);
     assert!(status.trim().is_empty());
