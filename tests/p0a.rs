@@ -1584,6 +1584,36 @@ fn bless_continue_commits_resolved_squash_conflict() {
 }
 
 #[test]
+fn bless_commit_failure_points_to_continue() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_failing_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/signing-fails"]);
+    fixture.write_file(&workspace, "signing.txt", "agent work\n");
+    fixture.git_in(&workspace, ["add", "signing.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent signing work"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/signing-fails"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("test signer unavailable"))
+        .stderr(predicate::str::contains("agd bless --continue"))
+        .stderr(predicate::str::contains("agd bless --abort"));
+    assert!(fixture.human.join(".git/agd/bless.json").exists());
+}
+
+#[test]
 fn json_bless_continue_outputs_continued_status() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -2353,6 +2383,12 @@ fn pr_bless_creates_human_adoption_branch_and_invokes_gh() {
     assert!(gh_args.contains("--base\nmain\n"));
     assert!(gh_args.contains("--head\npr-bless\n"));
     assert!(gh_args.contains("--title\npr-bless\n"));
+    assert!(gh_args.contains(
+        "Adopts `agent/pr-bless` into human-owned branch `pr-bless` for review against `main`."
+    ));
+    assert!(gh_args.contains("## Agent Commits\n- agent PR bless work"));
+    assert!(gh_args.contains("## Changed Files\n- pr-bless.txt"));
+    assert!(gh_args.contains("## Adoption"));
     assert!(gh_args.contains("Human adoption branch: pr-bless"));
     assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-bless"));
     assert!(gh_args.contains("AGD-Adoption: squash"));
@@ -2470,7 +2506,9 @@ fn pr_continue_finishes_interrupted_blessed_pr() {
         .current_dir(&fixture.human)
         .assert()
         .failure()
-        .stderr(predicate::str::contains("test signer unavailable"));
+        .stderr(predicate::str::contains("test signer unavailable"))
+        .stderr(predicate::str::contains("agd pr --continue"))
+        .stderr(predicate::str::contains("agd bless --abort"));
     assert!(fixture.human.join(".git/agd/bless.json").exists());
     let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
     assert_eq!(current_branch.trim(), "cody/pr-continue");
@@ -2496,6 +2534,12 @@ fn pr_continue_finishes_interrupted_blessed_pr() {
     assert!(gh_args.contains("--base\nrelease\n"));
     assert!(gh_args.contains("--head\ncody/pr-continue\n"));
     assert!(gh_args.contains("--title\ncody/pr-continue\n"));
+    assert!(gh_args.contains(
+        "Adopts `agent/pr-continue` into human-owned branch `cody/pr-continue` for review against `release`."
+    ));
+    assert!(gh_args.contains("## Agent Commits\n- agent PR continue work"));
+    assert!(gh_args.contains("## Changed Files\n- pr-continue.txt"));
+    assert!(gh_args.contains("## Adoption"));
     assert!(gh_args.contains("Human adoption branch: cody/pr-continue"));
     assert!(gh_args.contains("Base branch: release"));
     assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-continue"));
