@@ -50,6 +50,12 @@ agd diff agent/refactor-auth
 agd files agent/refactor-auth
 ```
 
+After the human target branch moves, sync the workspace and rebase the current agent branch from inside the agent workspace:
+
+```bash
+agd sync --rebase
+```
+
 Adopt the branch:
 
 ```bash
@@ -91,7 +97,7 @@ agd path [--workspace <id>]
 agd status
 agd identity
 agd doctor [--repair]
-agd sync [--rebase <branch>]
+agd sync [--rebase [branch]]
 agd handoff [--include-untracked <path>...]
 agd branches
 agd log [branch]

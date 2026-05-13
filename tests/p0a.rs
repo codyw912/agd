@@ -2990,6 +2990,73 @@ fn sync_rebases_selected_agent_branch_after_mirror_update() {
 }
 
 #[test]
+fn sync_rebase_defaults_to_current_agent_branch_from_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/current"]);
+    fixture.write_file(&workspace, "agent.txt", "agent current work\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent current work"]);
+    let agent_before = fixture.git_stdout(&workspace, ["rev-parse", "agent/current"]);
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+    let human_head = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+
+    fixture
+        .agd()
+        .args(["sync", "--rebase"])
+        .current_dir(&workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Synced main"))
+        .stdout(predicate::str::contains("Rebased agent/current"));
+
+    let current_branch = fixture.git_stdout(&workspace, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "agent/current");
+    let workspace_main = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+    assert_eq!(workspace_main.trim(), human_head.trim());
+    let agent_after = fixture.git_stdout(&workspace, ["rev-parse", "agent/current"]);
+    assert_ne!(agent_after.trim(), agent_before.trim());
+    let merge_base = fixture.git_stdout(
+        &workspace,
+        ["merge-base", human_head.trim(), agent_after.trim()],
+    );
+    assert_eq!(merge_base.trim(), human_head.trim());
+}
+
+#[test]
+fn sync_rebase_without_branch_requires_agent_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["sync", "--rebase"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "sync --rebase without a branch must be run from an agent workspace",
+        ));
+}
+
+#[test]
 fn json_sync_rebase_reports_rebased_branch() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

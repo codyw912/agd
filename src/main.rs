@@ -121,6 +121,7 @@ fn main() -> Result<()> {
         Some(Command::Sync { rebase }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
+            let rebase = resolve_sync_rebase(&context, &cwd, rebase)?;
             let result = sync::sync(&paths, context.project(), rebase.as_deref())?;
             if json {
                 json_output::print(&result)?;
@@ -393,4 +394,28 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn resolve_sync_rebase(
+    context: &project::ProjectContext,
+    cwd: &std::path::Path,
+    rebase: Option<Option<String>>,
+) -> Result<Option<String>> {
+    match rebase {
+        None => Ok(None),
+        Some(Some(branch)) => Ok(Some(branch)),
+        Some(None) => match context {
+            project::ProjectContext::HumanCheckout(_) => {
+                bail!("sync --rebase without a branch must be run from an agent workspace");
+            }
+            project::ProjectContext::AgentWorkspace(project) => {
+                let branch = git::stdout(cwd, ["branch", "--show-current"])?;
+                let branch = branch.trim().to_string();
+                if !branch_policy::is_agent_branch(project, &branch) {
+                    bail!("current agent branch is required for sync --rebase without a branch");
+                }
+                Ok(Some(branch))
+            }
+        },
+    }
 }
