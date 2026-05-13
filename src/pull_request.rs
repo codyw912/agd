@@ -41,11 +41,12 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullR
     git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
 
     let body = pr_body(project, workspace, &branch)?;
-    let Some(output) = create_pull_request(project, &branch, &body)? else {
+    let Some(output) = create_pull_request(project, &branch, &project.default_target, &body)?
+    else {
         return Ok(PullRequestResult {
             branch: branch.clone(),
             url: None,
-            next_step: Some(next_step(project, &branch)),
+            next_step: Some(next_step(project, &branch, &project.default_target)),
         });
     };
     let url = String::from_utf8(output.stdout).context("PR tool output was not utf-8")?;
@@ -60,17 +61,21 @@ pub fn open_blessed(
     paths: &AgdPaths,
     project: &Project,
     branch: Option<&str>,
+    target_branch: Option<String>,
+    adoption_branch: Option<String>,
     cwd: &Path,
 ) -> Result<PullRequestResult> {
     let branch = resolve_branch(project, branch, cwd)?;
-    let adoption_branch = adoption::derive_adoption_branch(&branch);
+    let target_branch = target_branch.unwrap_or_else(|| project.default_target.clone());
+    let adoption_branch =
+        adoption_branch.unwrap_or_else(|| adoption::derive_adoption_branch(&branch));
     let result = adoption::bless(
         paths,
         project,
         &branch,
         AdoptionMode::Squash,
         AdoptionTarget::Branch {
-            target_branch: project.default_target.clone(),
+            target_branch: target_branch.clone(),
             adoption_branch,
         },
     )?;
@@ -82,12 +87,12 @@ pub fn open_blessed(
     let push_spec = format!("refs/heads/{adoption_branch}:refs/heads/{adoption_branch}");
     git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
 
-    let body = adoption_pr_body(project, &result)?;
-    let Some(output) = create_pull_request(project, adoption_branch, &body)? else {
+    let body = adoption_pr_body(project, &target_branch, &result)?;
+    let Some(output) = create_pull_request(project, adoption_branch, &target_branch, &body)? else {
         return Ok(PullRequestResult {
             branch: adoption_branch.clone(),
             url: None,
-            next_step: Some(next_step(project, adoption_branch)),
+            next_step: Some(next_step(project, adoption_branch, &target_branch)),
         });
     };
     let url = String::from_utf8(output.stdout).context("PR tool output was not utf-8")?;
@@ -103,18 +108,23 @@ enum PrCreateError {
     Failure(anyhow::Error),
 }
 
-fn create_pull_request(project: &Project, branch: &str, body: &str) -> Result<Option<Output>> {
+fn create_pull_request(
+    project: &Project,
+    branch: &str,
+    base: &str,
+    body: &str,
+) -> Result<Option<Output>> {
     if is_gitlab_remote(project) {
-        return match create_gitlab_mr(project, branch, body) {
+        return match create_gitlab_mr(project, branch, base, body) {
             Ok(output) => Ok(Some(output)),
             Err(PrCreateError::MissingCli) => Ok(None),
             Err(PrCreateError::Failure(error)) => Err(error),
         };
     }
 
-    match create_github_pr(project, branch, body) {
+    match create_github_pr(project, branch, base, body) {
         Ok(output) => Ok(Some(output)),
-        Err(PrCreateError::MissingCli) => match create_gitlab_mr(project, branch, body) {
+        Err(PrCreateError::MissingCli) => match create_gitlab_mr(project, branch, base, body) {
             Ok(output) => Ok(Some(output)),
             Err(PrCreateError::MissingCli) => Ok(None),
             Err(PrCreateError::Failure(error)) => Err(error),
@@ -127,19 +137,15 @@ fn is_gitlab_remote(project: &Project) -> bool {
     upstream_remote_url(project).is_some_and(|url| url.to_ascii_lowercase().contains("gitlab"))
 }
 
-fn create_github_pr(project: &Project, branch: &str, body: &str) -> Result<Output, PrCreateError> {
+fn create_github_pr(
+    project: &Project,
+    branch: &str,
+    base: &str,
+    body: &str,
+) -> Result<Output, PrCreateError> {
     let output = match Command::new("gh")
         .args([
-            "pr",
-            "create",
-            "--base",
-            &project.default_target,
-            "--head",
-            branch,
-            "--title",
-            branch,
-            "--body",
-            body,
+            "pr", "create", "--base", base, "--head", branch, "--title", branch, "--body", body,
         ])
         .current_dir(&project.human_checkout)
         .output()
@@ -157,13 +163,18 @@ fn create_github_pr(project: &Project, branch: &str, body: &str) -> Result<Outpu
     Ok(output)
 }
 
-fn create_gitlab_mr(project: &Project, branch: &str, body: &str) -> Result<Output, PrCreateError> {
+fn create_gitlab_mr(
+    project: &Project,
+    branch: &str,
+    base: &str,
+    body: &str,
+) -> Result<Output, PrCreateError> {
     let output = match Command::new("glab")
         .args([
             "mr",
             "create",
             "--target-branch",
-            &project.default_target,
+            base,
             "--source-branch",
             branch,
             "--title",
@@ -187,22 +198,20 @@ fn create_gitlab_mr(project: &Project, branch: &str, body: &str) -> Result<Outpu
     Ok(output)
 }
 
-fn next_step(project: &Project, branch: &str) -> String {
-    let generic = format!(
-        "Pushed {branch} to origin. Open a pull request from {branch} into {}.",
-        project.default_target
-    );
-    match hosted_pr_url(project, branch) {
+fn next_step(project: &Project, branch: &str, base: &str) -> String {
+    let generic =
+        format!("Pushed {branch} to origin. Open a pull request from {branch} into {base}.");
+    match hosted_pr_url(project, branch, base) {
         Some(url) => format!("{generic}\nOpen: {url}"),
         None => generic,
     }
 }
 
-fn hosted_pr_url(project: &Project, branch: &str) -> Option<String> {
+fn hosted_pr_url(project: &Project, branch: &str, base: &str) -> Option<String> {
     let remote_url = upstream_remote_url(project)?;
     let (host, path) = parse_remote_host_path(&remote_url)?;
     let host_lower = host.to_ascii_lowercase();
-    let base = percent_encode_component(&project.default_target);
+    let base = percent_encode_component(base);
     let branch = percent_encode_component(branch);
 
     if host_lower.contains("github") {
@@ -265,7 +274,11 @@ fn percent_encode_component(value: &str) -> String {
         .collect()
 }
 
-fn adoption_pr_body(project: &Project, result: &adoption::BlessResult) -> Result<String> {
+fn adoption_pr_body(
+    project: &Project,
+    base: &str,
+    result: &adoption::BlessResult,
+) -> Result<String> {
     let adoption_branch = result
         .adoption_branch
         .as_ref()
@@ -275,7 +288,7 @@ fn adoption_pr_body(project: &Project, result: &adoption::BlessResult) -> Result
 
     Ok(format!(
         "## Summary\n- Human adoption branch: {adoption_branch}\n- Base branch: {}\n- Agent branch: {}\n- Adoption: {}\n- Adoption commit: {}\n\n## Provenance\n{AGD_PROVENANCE_HELP}\n{}",
-        project.default_target,
+        base,
         result.branch,
         result.adoption,
         adoption_commit.trim(),

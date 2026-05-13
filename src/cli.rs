@@ -42,6 +42,10 @@ pub enum Command {
     Pr {
         #[arg(long)]
         bless: bool,
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long = "branch")]
+        adoption_branch: Option<String>,
         branch: Option<String>,
     },
     Verify {

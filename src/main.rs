@@ -172,12 +172,27 @@ fn main() -> Result<()> {
                 review::diff(context.project(), branch.as_deref(), &cwd)?;
             }
         }
-        Some(Command::Pr { bless, branch }) => {
+        Some(Command::Pr {
+            bless,
+            target,
+            adoption_branch,
+            branch,
+        }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             let result = if bless {
-                pull_request::open_blessed(&paths, context.project(), branch.as_deref(), &cwd)?
+                pull_request::open_blessed(
+                    &paths,
+                    context.project(),
+                    branch.as_deref(),
+                    target,
+                    adoption_branch,
+                    &cwd,
+                )?
             } else {
+                if target.is_some() || adoption_branch.is_some() {
+                    bail!("pr --target and --branch require --bless");
+                }
                 pull_request::open(context.project(), branch.as_deref(), &cwd)?
             };
             if json {
