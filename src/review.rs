@@ -6,8 +6,13 @@ use serde::Serialize;
 use std::path::Path;
 
 pub fn branches(project: &Project) -> Result<()> {
-    for branch in branch_names(project)? {
-        println!("{branch}");
+    for branch in branch_summaries(project)? {
+        println!(
+            "{}  {}  {}",
+            branch.branch,
+            plural(branch.commits, "commit", "commits"),
+            plural(branch.files_changed, "file changed", "files changed")
+        );
     }
     Ok(())
 }
@@ -23,6 +28,43 @@ pub fn branch_names(project: &Project) -> Result<Vec<String>> {
         .filter(|branch| is_review_branch(project, branch))
         .map(str::to_string)
         .collect())
+}
+
+#[derive(Debug, Serialize)]
+pub struct AgentBranchSummary {
+    pub branch: String,
+    pub commits: usize,
+    pub files_changed: usize,
+}
+
+pub fn branch_summaries(project: &Project) -> Result<Vec<AgentBranchSummary>> {
+    let workspace = default_workspace(project)?;
+    branch_names(project)?
+        .into_iter()
+        .map(|branch| {
+            let commits = git::stdout(
+                &workspace.path,
+                [
+                    "rev-list",
+                    "--count",
+                    &format!("{}..{branch}", project.default_target),
+                ],
+            )?;
+            let files = git::stdout(
+                &workspace.path,
+                [
+                    "diff",
+                    "--name-only",
+                    &format!("{}...{branch}", project.default_target),
+                ],
+            )?;
+            Ok(AgentBranchSummary {
+                branch,
+                commits: commits.trim().parse().context("parse commit count")?,
+                files_changed: files.lines().count(),
+            })
+        })
+        .collect()
 }
 
 pub fn log(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
@@ -147,4 +189,12 @@ fn default_workspace(project: &Project) -> Result<&crate::project::Workspace> {
 
 fn is_review_branch(project: &Project, branch: &str) -> bool {
     branch_policy::is_agent_branch(project, branch)
+}
+
+fn plural(count: usize, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("{count} {singular}")
+    } else {
+        format!("{count} {plural}")
+    }
 }
