@@ -11,6 +11,8 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::process::{Command, Output};
 
+const AGD_PROVENANCE_HELP: &str = "AGD provenance: https://github.com/codyw912/agd";
+
 #[derive(Debug, Serialize)]
 pub struct PullRequestResult {
     pub branch: String,
@@ -271,7 +273,7 @@ fn adoption_pr_body(project: &Project, result: &adoption::BlessResult) -> Result
     let commit_body = git::stdout(&project.human_checkout, ["log", "-1", "--format=%B"])?;
 
     Ok(format!(
-        "## Summary\n- Human adoption branch: {adoption_branch}\n- Base branch: {}\n- Agent branch: {}\n- Adoption: {}\n- Adoption commit: {}\n\n## Provenance\n{}",
+        "## Summary\n- Human adoption branch: {adoption_branch}\n- Base branch: {}\n- Agent branch: {}\n- Adoption: {}\n- Adoption commit: {}\n\n## Provenance\n{AGD_PROVENANCE_HELP}\n{}",
         project.default_target,
         result.branch,
         result.adoption,
@@ -322,7 +324,7 @@ fn pr_body(
     };
 
     Ok(format!(
-        "## Summary\n- Agent branch: {branch}\n- Base branch: {}\n- Base commit: {}\n- Agent tip: {}\n\n## Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Provenance\nAGD-Agent-Branch: {branch}\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\nAGD-Patch-SHA256: {patch_sha256}\n\n## Adoption Recommendation\nReview this PR, then adopt with `agd bless {branch}` if it should become signed human history.",
+        "## Summary\n- Agent branch: {branch}\n- Base branch: {}\n- Base commit: {}\n- Agent tip: {}\n\n## Commits\n{commits}\n\n## Changed Files\n{files}\n\n## Provenance\n{AGD_PROVENANCE_HELP}\nAGD-Agent-Branch: {branch}\nAGD-Agent-Base: {}\nAGD-Agent-Tip: {}\nAGD-Patch-SHA256: {patch_sha256}\n\n## Adoption Recommendation\nReview this PR, then adopt with `agd bless {branch}` if it should become signed human history.",
         project.default_target,
         base_commit.trim(),
         agent_tip.trim(),
