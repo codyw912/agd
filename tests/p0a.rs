@@ -132,6 +132,21 @@ impl Fixture {
         self.git(["config", "gpg.program", signer]);
     }
 
+    fn configure_failing_human_signer(&self) {
+        let signer = self._tmp.path().join("failing-gpg");
+        fs::write(
+            &signer,
+            "#!/bin/sh\ncat >/dev/null\necho 'test signer unavailable' >&2\nexit 1\n",
+        )
+        .expect("write failing signer");
+        make_executable(&signer);
+        let signer = signer.to_str().expect("utf-8 signer");
+        self.git(["config", "gpg.format", "openpgp"]);
+        self.git(["config", "commit.gpgsign", "true"]);
+        self.git(["config", "user.signingkey", "human@example.test"]);
+        self.git(["config", "gpg.program", signer]);
+    }
+
     fn configure_lock_capturing_human_signer(&self) {
         let signer = self._tmp.path().join("capture-lock-gpg");
         fs::write(
@@ -2410,6 +2425,81 @@ fn pr_bless_uses_explicit_target_and_adoption_branch() {
     assert!(gh_args.contains("Human adoption branch: cody/pr-bless"));
     assert!(gh_args.contains("Base branch: release"));
     assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-bless"));
+}
+
+#[test]
+fn pr_continue_finishes_interrupted_blessed_pr() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_failing_human_signer();
+    fixture.git(["switch", "-c", "release"]);
+    fixture.write_file(&fixture.human, "release.txt", "release-only\n");
+    fixture.git(["add", "release.txt"]);
+    fixture.git(["commit", "--no-gpg-sign", "-m", "prepare release"]);
+    fixture.git(["switch", "main"]);
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture.git(["push", "-u", "origin", "release"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-continue"]);
+    fixture.write_file(&workspace, "pr-continue.txt", "agent PR continue work\n");
+    fixture.git_in(&workspace, ["add", "pr-continue.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent PR continue work"]);
+
+    fixture
+        .agd()
+        .args([
+            "pr",
+            "--bless",
+            "--target",
+            "release",
+            "--branch",
+            "cody/pr-continue",
+            "agent/pr-continue",
+        ])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("test signer unavailable"));
+    assert!(fixture.human.join(".git/agd/bless.json").exists());
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "cody/pr-continue");
+
+    fixture.configure_fake_human_signer();
+    let gh_capture = fixture._tmp.path().join("gh-pr-continue-args.txt");
+    let fake_path = fixture.fake_gh_path(&gh_capture);
+    fixture
+        .agd()
+        .args(["pr", "--continue"])
+        .env("PATH", fake_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("https://example.test/pr/1"));
+
+    assert!(!fixture.human.join(".git/agd/bless.json").exists());
+    fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["rev-parse", "--verify", "refs/heads/cody/pr-continue"],
+    );
+    let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
+    assert!(gh_args.contains("--base\nrelease\n"));
+    assert!(gh_args.contains("--head\ncody/pr-continue\n"));
+    assert!(gh_args.contains("--title\ncody/pr-continue\n"));
+    assert!(gh_args.contains("Human adoption branch: cody/pr-continue"));
+    assert!(gh_args.contains("Base branch: release"));
+    assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-continue"));
+    assert!(gh_args.contains("AGD-Adoption: squash"));
 }
 
 #[test]

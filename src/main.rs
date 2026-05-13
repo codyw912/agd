@@ -175,13 +175,19 @@ fn main() -> Result<()> {
         }
         Some(Command::Pr {
             bless,
+            r#continue,
             target,
             adoption_branch,
             branch,
         }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let result = if bless {
+            let result = if r#continue {
+                if bless || target.is_some() || adoption_branch.is_some() || branch.is_some() {
+                    bail!("pr --continue cannot be combined with other pr options");
+                }
+                pull_request::continue_blessed(&paths, context.project())?
+            } else if bless {
                 pull_request::open_blessed(
                     &paths,
                     context.project(),
