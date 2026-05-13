@@ -60,6 +60,9 @@ pub fn bless(
 }
 
 pub fn derive_adoption_branch(branch: &str) -> String {
+    if branch == "agent/main" {
+        return "adopt/main".to_string();
+    }
     branch.strip_prefix("agent/").unwrap_or(branch).to_string()
 }
 

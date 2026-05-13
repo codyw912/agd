@@ -31,6 +31,16 @@ git switch -c agent/refactor-auth
 git commit -m "Extract auth retry helper"
 ```
 
+For longer unattended sessions, use `agent/main` as an agent-local integration branch and merge task branches into it as work stabilizes:
+
+```bash
+git switch -c agent/main main
+git switch -c agent/refactor-auth
+git commit -m "Extract auth retry helper"
+git switch agent/main
+git merge --no-ff agent/refactor-auth
+```
+
 Review from the human checkout:
 
 ```bash
@@ -46,7 +56,7 @@ Adopt the branch:
 agd bless agent/refactor-auth
 ```
 
-By default, `bless` creates a human-owned adoption branch from the configured target branch. For example, `agent/refactor-auth` adopts onto `refactor-auth`, leaving `main` ready for a normal protected-branch PR. Use `--branch <name>` for project branch naming policies, `--target <branch>` for a non-default base branch, or `--direct` when you explicitly want to adopt onto the current human branch.
+By default, `bless` creates a human-owned adoption branch from the configured target branch. For example, `agent/refactor-auth` adopts onto `refactor-auth`, leaving `main` ready for a normal protected-branch PR. The integration branch `agent/main` adopts onto `adopt/main` by default so it does not collide with protected `main`. Use `--branch <name>` for project branch naming policies, `--target <branch>` for a non-default base branch, or `--direct` when you explicitly want to adopt onto the current human branch.
 
 ## What AGD Sets Up
 

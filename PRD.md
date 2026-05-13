@@ -646,6 +646,7 @@ review/adoption operates on selected branch or commit range
 Example branch graph:
 
 main
+agent/main
 agent/refactor-auth
 agent/add-tests
 agent/fix-lint
@@ -653,10 +654,18 @@ scratch/experiment
 
 Agents can use normal Git:
 
+git switch -c agent/main main
 git switch -c agent/refactor-auth
 git commit -m "Extract retry helper"
+git switch agent/main
+git merge --no-ff agent/refactor-auth
 git switch -c agent/add-tests
-git merge agent/refactor-auth
+
+`agent/main` is an agent-local integration branch, not the upstream target branch.
+Long-running unattended sessions can merge individual `agent/*` task branches into `agent/main`
+without giving the agent upstream push authority.
+When adopted, `agd bless agent/main` should default to a human adoption branch such as `adopt/main`,
+not `main`, so protected-target workflows still go through explicit human review and PR merge.
 
 AGD commands default to the current branch when run inside an agent workspace.
 
