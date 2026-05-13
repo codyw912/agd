@@ -995,6 +995,43 @@ fn bless_defaults_to_human_adoption_branch() {
 }
 
 #[test]
+fn bless_agent_main_defaults_to_adopt_main_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+    let main_before = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/main"]);
+    fixture.write_file(&workspace, "session.txt", "integrated work\n");
+    fixture.git_in(&workspace, ["add", "session.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "session integration"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/main"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Blessed agent/main onto adopt/main",
+        ));
+
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "adopt/main");
+    let main_after = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+    assert_eq!(main_after, main_before);
+    let body = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%B"]);
+    assert!(body.contains("AGD-Agent-Branch: agent/main"));
+}
+
+#[test]
 fn bless_uses_explicit_human_adoption_branch() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
