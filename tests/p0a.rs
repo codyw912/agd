@@ -1927,7 +1927,7 @@ fn bless_lock_records_recovery_metadata_while_operation_runs() {
 }
 
 #[test]
-fn branches_lists_agent_branches() {
+fn branches_lists_agent_branch_summaries() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
     fixture
@@ -1939,9 +1939,18 @@ fn branches_lists_agent_branches() {
     let workspace = fixture.agd_path();
 
     fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
-    fixture.write_file(&workspace, "agent.txt", "agent work\n");
-    fixture.git_in(&workspace, ["add", "agent.txt"]);
-    fixture.git_in(&workspace, ["commit", "-m", "agent work"]);
+    fixture.write_file(&workspace, "agent-auth.txt", "auth work\n");
+    fixture.git_in(&workspace, ["add", "agent-auth.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent auth"]);
+    fixture.write_file(&workspace, "agent-policy.txt", "policy work\n");
+    fixture.git_in(&workspace, ["add", "agent-policy.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent policy"]);
+
+    fixture.git_in(&workspace, ["switch", "main"]);
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-ui"]);
+    fixture.write_file(&workspace, "agent-ui.txt", "ui work\n");
+    fixture.git_in(&workspace, ["add", "agent-ui.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent ui"]);
 
     fixture
         .agd()
@@ -1949,7 +1958,12 @@ fn branches_lists_agent_branches() {
         .current_dir(&fixture.human)
         .assert()
         .success()
-        .stdout(predicate::str::contains("agent/refactor-auth"));
+        .stdout(predicate::str::contains(
+            "agent/refactor-auth  2 commits  2 files changed",
+        ))
+        .stdout(predicate::str::contains(
+            "agent/refactor-ui  1 commit  1 file changed",
+        ));
 }
 
 #[test]
