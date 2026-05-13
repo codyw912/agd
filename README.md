@@ -64,6 +64,12 @@ To adopt and open the protected-branch PR in one step:
 agd pr --bless agent/refactor-auth
 ```
 
+Use `--branch <name>` and `--target <branch>` with `--bless` when the adoption branch name or base branch needs to follow project policy:
+
+```bash
+agd pr --bless --branch cody/refactor-auth --target release agent/refactor-auth
+```
+
 ## What AGD Sets Up
 
 `agd init` creates a managed clone under your AGD home, records project metadata, and configures the agent workspace with:
@@ -96,7 +102,7 @@ agd bless --direct [--preserve | --merge] <branch>
 agd bless --continue
 agd bless --abort
 agd pr [branch]
-agd pr --bless [branch]
+agd pr --bless [--target <branch>] [--branch <name>] [branch]
 agd verify <commit>
 agd shell
 agd discard [--force] <branch>
