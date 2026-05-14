@@ -1,3 +1,4 @@
+use crate::branch_policy;
 use crate::git;
 use crate::operation_lock::OperationLock;
 use crate::paths::AgdPaths;
@@ -54,6 +55,9 @@ pub fn bless(
     mode: AdoptionMode,
     target: AdoptionTarget,
 ) -> Result<BlessResult> {
+    if !branch_policy::is_agent_branch(project, branch) {
+        anyhow::bail!("agent branch is required");
+    }
     let prepared = prepare(paths, project, branch, target)?;
     match mode {
         AdoptionMode::Squash => bless_squash(project, &prepared),

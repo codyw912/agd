@@ -1010,6 +1010,40 @@ fn bless_defaults_to_human_adoption_branch() {
 }
 
 #[test]
+fn bless_defaults_to_current_agent_branch_from_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+
+    fixture
+        .agd()
+        .arg("bless")
+        .current_dir(&workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Blessed agent/refactor-auth onto refactor-auth",
+        ));
+
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "refactor-auth");
+    let body = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%B"]);
+    assert!(body.contains("AGD-Agent-Branch: agent/refactor-auth"));
+}
+
+#[test]
 fn bless_agent_main_defaults_to_adopt_main_branch() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -1044,6 +1078,27 @@ fn bless_agent_main_defaults_to_adopt_main_branch() {
     assert_eq!(main_after, main_before);
     let body = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%B"]);
     assert!(body.contains("AGD-Agent-Branch: agent/main"));
+}
+
+#[test]
+fn bless_rejects_protected_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["bless", "main"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agent branch is required"));
 }
 
 #[test]
