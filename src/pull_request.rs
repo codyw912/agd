@@ -5,11 +5,12 @@ use crate::paths::AgdPaths;
 use crate::project::Project;
 use crate::provenance;
 use anyhow::{anyhow, Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
+use std::fs;
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const AGD_PROVENANCE_HELP: &str =
@@ -91,28 +92,91 @@ pub fn open_blessed(
         .adoption_branch
         .as_ref()
         .context("bless did not create an adoption branch")?;
+    let state = PrState::from_bless_result(&target_branch, adoption_branch, &result);
+    write_pr_state(project, &state)?;
+    finish_blessed_pr(project, &state)
+}
 
+pub fn continue_blessed(paths: &AgdPaths, project: &Project) -> Result<PullRequestResult> {
+    if let Some(state) = read_pr_state(project)? {
+        return finish_blessed_pr(project, &state);
+    }
+
+    let result = adoption::continue_bless(paths, project)?;
+    let adoption_branch = result
+        .adoption_branch
+        .as_ref()
+        .context("continued bless did not create an adoption branch")?;
+    let state = PrState::from_bless_continue_result(adoption_branch, &result);
+    write_pr_state(project, &state)?;
+    finish_blessed_pr(project, &state)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PrState {
+    agent_branch: String,
+    adoption_branch: String,
+    target_branch: String,
+    adoption: String,
+}
+
+impl PrState {
+    fn from_bless_result(
+        target_branch: &str,
+        adoption_branch: &str,
+        result: &adoption::BlessResult,
+    ) -> Self {
+        Self {
+            agent_branch: result.branch.clone(),
+            adoption_branch: adoption_branch.to_string(),
+            target_branch: target_branch.to_string(),
+            adoption: result.adoption.to_string(),
+        }
+    }
+
+    fn from_bless_continue_result(
+        adoption_branch: &str,
+        result: &adoption::BlessContinueResult,
+    ) -> Self {
+        Self {
+            agent_branch: result.branch.clone(),
+            adoption_branch: adoption_branch.to_string(),
+            target_branch: result.target_branch.clone(),
+            adoption: result.adoption.clone(),
+        }
+    }
+}
+
+fn finish_blessed_pr(project: &Project, state: &PrState) -> Result<PullRequestResult> {
+    let adoption_branch = &state.adoption_branch;
     let push_spec = format!("refs/heads/{adoption_branch}:refs/heads/{adoption_branch}");
     git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
 
     let body = adoption_pr_body(
         project,
-        &target_branch,
+        &state.target_branch,
         adoption_branch,
-        &result.branch,
-        result.adoption,
+        &state.agent_branch,
+        &state.adoption,
     )?;
     let title = adoption_pr_title(project, adoption_branch)?;
-    let Some(output) =
-        create_pull_request(project, adoption_branch, &target_branch, &title, &body)?
+    let Some(output) = create_pull_request(
+        project,
+        adoption_branch,
+        &state.target_branch,
+        &title,
+        &body,
+    )?
     else {
+        remove_pr_state(project)?;
         return Ok(PullRequestResult {
             branch: adoption_branch.clone(),
             url: None,
-            next_step: Some(next_step(project, adoption_branch, &target_branch)),
+            next_step: Some(next_step(project, adoption_branch, &state.target_branch)),
         });
     };
     let url = String::from_utf8(output.stdout).context("PR tool output was not utf-8")?;
+    remove_pr_state(project)?;
     Ok(PullRequestResult {
         branch: adoption_branch.clone(),
         url: Some(url.trim().to_string()),
@@ -120,44 +184,48 @@ pub fn open_blessed(
     })
 }
 
-pub fn continue_blessed(paths: &AgdPaths, project: &Project) -> Result<PullRequestResult> {
-    let result = adoption::continue_bless(paths, project)?;
-    let adoption_branch = result
-        .adoption_branch
-        .as_ref()
-        .context("continued bless did not create an adoption branch")?;
+fn write_pr_state(project: &Project, state: &PrState) -> Result<()> {
+    let path = pr_state_path(project)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    let contents = serde_json::to_vec_pretty(state)?;
+    fs::write(&path, contents).with_context(|| format!("write {}", path.display()))
+}
 
-    let push_spec = format!("refs/heads/{adoption_branch}:refs/heads/{adoption_branch}");
-    git::run(&project.human_checkout, ["push", "origin", &push_spec])?;
-
-    let body = adoption_pr_body(
-        project,
-        &result.target_branch,
-        adoption_branch,
-        &result.branch,
-        &result.adoption,
-    )?;
-    let title = adoption_pr_title(project, adoption_branch)?;
-    let Some(output) = create_pull_request(
-        project,
-        adoption_branch,
-        &result.target_branch,
-        &title,
-        &body,
-    )?
-    else {
-        return Ok(PullRequestResult {
-            branch: adoption_branch.clone(),
-            url: None,
-            next_step: Some(next_step(project, adoption_branch, &result.target_branch)),
-        });
+fn read_pr_state(project: &Project) -> Result<Option<PrState>> {
+    let path = pr_state_path(project)?;
+    let contents = match fs::read(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error).with_context(|| format!("read {}", path.display())),
     };
-    let url = String::from_utf8(output.stdout).context("PR tool output was not utf-8")?;
-    Ok(PullRequestResult {
-        branch: adoption_branch.clone(),
-        url: Some(url.trim().to_string()),
-        next_step: None,
-    })
+    let state =
+        serde_json::from_slice(&contents).with_context(|| format!("parse {}", path.display()))?;
+    Ok(Some(state))
+}
+
+fn remove_pr_state(project: &Project) -> Result<()> {
+    let path = pr_state_path(project)?;
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("remove {}", path.display())),
+    }
+}
+
+fn pr_state_path(project: &Project) -> Result<PathBuf> {
+    Ok(git_dir(&project.human_checkout)?.join("agd/pr.json"))
+}
+
+fn git_dir(repo: &Path) -> Result<PathBuf> {
+    let git_dir = git::stdout(repo, ["rev-parse", "--git-dir"])?;
+    let path = PathBuf::from(git_dir.trim());
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Ok(repo.join(path))
+    }
 }
 
 enum PrCreateError {
