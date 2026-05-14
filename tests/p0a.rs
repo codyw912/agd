@@ -4594,6 +4594,41 @@ fn doctor_detects_incomplete_agd_bless_state() {
 }
 
 #[test]
+fn doctor_detects_incomplete_agd_pr_state() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fs::create_dir_all(fixture.human.join(".git/agd")).expect("create agd git dir");
+    fixture.write_file(
+        &fixture.human,
+        ".git/agd/pr.json",
+        r#"{
+  "agent_branch": "agent/retry-pr",
+  "adoption_branch": "retry-pr",
+  "target_branch": "main",
+  "adoption": "squash"
+}
+"#,
+    );
+
+    fixture
+        .agd()
+        .arg("doctor")
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("fail AGD PR state"))
+        .stdout(predicate::str::contains("agd pr --continue"))
+        .stderr(predicate::str::contains("doctor found failed checks"));
+}
+
+#[test]
 fn doctor_detects_existing_agd_operation_lock() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

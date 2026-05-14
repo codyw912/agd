@@ -307,6 +307,7 @@ fn checks(paths: &AgdPaths, context: &ProjectContext, cwd: &Path) -> Vec<Check> 
     checks.push(git_state_check("human git state", &project.human_checkout));
     checks.push(git_state_check("workspace git state", &workspace.path));
     checks.push(agd_bless_state_check(&project.human_checkout));
+    checks.push(agd_pr_state_check(&project.human_checkout));
     checks.push(agd_lock_check(paths, project));
     checks.push(dirty_check("human dirty", &project.human_checkout));
     checks.push(dirty_check("workspace dirty", &workspace.path));
@@ -686,6 +687,21 @@ fn agd_bless_state_check(repo: &Path) -> Check {
         )
     } else {
         ok("AGD bless state", "")
+    }
+}
+
+fn agd_pr_state_check(repo: &Path) -> Check {
+    let state_path = match git::stdout(repo, ["rev-parse", "--git-path", "agd/pr.json"]) {
+        Ok(path) => repo.join(path.trim()),
+        Err(error) => return fail("AGD PR state", error.to_string()),
+    };
+    if state_path.exists() {
+        fail(
+            "AGD PR state",
+            "run `agd pr --continue` to retry PR publication",
+        )
+    } else {
+        ok("AGD PR state", "")
     }
 }
 
