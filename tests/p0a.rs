@@ -1584,6 +1584,26 @@ fn json_bless_abort_outputs_aborted_status() {
 }
 
 #[test]
+fn bless_abort_reports_missing_recovery_state() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["bless", "--abort"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no pending bless operation"));
+}
+
+#[test]
 fn bless_continue_commits_resolved_squash_conflict() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

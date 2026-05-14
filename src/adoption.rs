@@ -74,6 +74,7 @@ pub fn derive_adoption_branch(branch: &str) -> String {
 }
 
 pub fn abort(project: &Project) -> Result<BlessAbortResult> {
+    require_bless_state(project)?;
     git::run(&project.human_checkout, ["reset", "--merge"])?;
     remove_bless_state(project)?;
     Ok(BlessAbortResult { status: "aborted" })
@@ -418,6 +419,17 @@ fn remove_bless_state(project: &Project) -> Result<()> {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error).with_context(|| format!("remove {}", path.display())),
+    }
+}
+
+fn require_bless_state(project: &Project) -> Result<()> {
+    let path = bless_state_path(project)?;
+    match fs::metadata(&path) {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            anyhow::bail!("no pending bless operation");
+        }
+        Err(error) => Err(error).with_context(|| format!("stat {}", path.display())),
     }
 }
 
