@@ -1296,7 +1296,10 @@ fn bless_missing_agent_branch_does_not_create_adoption_branch() {
         .args(["bless", "agent/missing"])
         .current_dir(&fixture.human)
         .assert()
-        .failure();
+        .failure()
+        .stderr(predicate::str::contains(
+            "agent branch not found: agent/missing",
+        ));
 
     let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
     assert_eq!(current_branch.trim(), "main");
@@ -2745,6 +2748,9 @@ fn pr_bless_missing_agent_branch_omits_recovery_guidance() {
         .current_dir(&fixture.human)
         .assert()
         .failure()
+        .stderr(predicate::str::contains(
+            "agent branch not found: agent/missing",
+        ))
         .stderr(predicate::str::contains("agd pr --continue").not())
         .stderr(predicate::str::contains("agd bless --abort").not());
 
