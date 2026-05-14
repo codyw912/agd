@@ -159,6 +159,7 @@ fn prepare<'a>(
             target_branch,
             adoption_branch,
         } => {
+            ensure_target_branch_exists(project, &target_branch)?;
             ensure_adoption_branch_available(project, &adoption_branch)?;
             (target_branch, Some(adoption_branch))
         }
@@ -220,6 +221,19 @@ fn ensure_adoption_branch_available(project: &Project, branch: &str) -> Result<(
     .is_ok()
     {
         anyhow::bail!("adoption branch already exists: {branch}");
+    }
+    Ok(())
+}
+
+fn ensure_target_branch_exists(project: &Project, branch: &str) -> Result<()> {
+    let refname = format!("refs/heads/{branch}");
+    if git::run(
+        &project.human_checkout,
+        ["show-ref", "--verify", "--quiet", &refname],
+    )
+    .is_err()
+    {
+        anyhow::bail!("target branch not found: {branch}");
     }
     Ok(())
 }

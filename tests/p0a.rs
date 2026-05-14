@@ -1178,6 +1178,43 @@ fn bless_uses_explicit_target_branch_for_adoption_branch() {
 }
 
 #[test]
+fn bless_missing_target_branch_does_not_write_agd_refs() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&workspace, "agent.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "agent.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "agent one"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/refactor-auth", "--target", "missing"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("target branch not found: missing"));
+
+    fixture.git_fails(
+        &fixture.human,
+        ["show-ref", "--verify", "refs/agd/agent/agent/refactor-auth"],
+    );
+    let safety_refs = fixture.git_stdout(
+        &fixture.human,
+        ["for-each-ref", "--format=%(refname)", "refs/agd/safety"],
+    );
+    assert!(safety_refs.trim().is_empty());
+}
+
+#[test]
 fn bless_direct_adopts_onto_current_branch() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
