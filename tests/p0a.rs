@@ -2377,6 +2377,23 @@ fn review_commands_target_named_workspace() {
         .assert()
         .success()
         .stdout(predicate::str::contains("named.txt"));
+
+    fixture
+        .agd()
+        .arg("branches")
+        .current_dir(&review_workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("agent/named-review"))
+        .stdout(predicate::str::contains("agent/default-review").not());
+
+    fixture
+        .agd()
+        .arg("log")
+        .current_dir(&review_workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("named review work"));
 }
 
 #[test]

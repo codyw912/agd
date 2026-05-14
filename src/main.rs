@@ -147,53 +147,35 @@ fn main() -> Result<()> {
         Some(Command::Branches { workspace }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
+            let workspace = review_workspace(&context, workspace.as_deref());
             if json {
-                json_output::branches(review::branch_names(
-                    context.project(),
-                    workspace.as_deref(),
-                )?)?;
+                json_output::branches(review::branch_names(context.project(), workspace)?)?;
             } else {
-                review::branches(context.project(), workspace.as_deref())?;
+                review::branches(context.project(), workspace)?;
             }
         }
         Some(Command::Log { workspace, branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
+            let workspace = review_workspace(&context, workspace.as_deref());
             if json {
-                let log = review::commit_log(
-                    context.project(),
-                    workspace.as_deref(),
-                    branch.as_deref(),
-                    &cwd,
-                )?;
+                let log =
+                    review::commit_log(context.project(), workspace, branch.as_deref(), &cwd)?;
                 json_output::print(&log)?;
             } else {
-                review::log(
-                    context.project(),
-                    workspace.as_deref(),
-                    branch.as_deref(),
-                    &cwd,
-                )?;
+                review::log(context.project(), workspace, branch.as_deref(), &cwd)?;
             }
         }
         Some(Command::Diff { workspace, branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
+            let workspace = review_workspace(&context, workspace.as_deref());
             if json {
-                let diff = review::branch_diff(
-                    context.project(),
-                    workspace.as_deref(),
-                    branch.as_deref(),
-                    &cwd,
-                )?;
+                let diff =
+                    review::branch_diff(context.project(), workspace, branch.as_deref(), &cwd)?;
                 json_output::print(&diff)?;
             } else {
-                review::diff(
-                    context.project(),
-                    workspace.as_deref(),
-                    branch.as_deref(),
-                    &cwd,
-                )?;
+                review::diff(context.project(), workspace, branch.as_deref(), &cwd)?;
             }
         }
         Some(Command::Pr {
@@ -254,20 +236,16 @@ fn main() -> Result<()> {
         Some(Command::Files { workspace, branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
+            let workspace = review_workspace(&context, workspace.as_deref());
             if json {
                 json_output::files(review::changed_files(
                     context.project(),
-                    workspace.as_deref(),
+                    workspace,
                     branch.as_deref(),
                     &cwd,
                 )?)?;
             } else {
-                review::files(
-                    context.project(),
-                    workspace.as_deref(),
-                    branch.as_deref(),
-                    &cwd,
-                )?;
+                review::files(context.project(), workspace, branch.as_deref(), &cwd)?;
             }
         }
         Some(Command::Discard {
@@ -429,6 +407,13 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn review_workspace<'a>(
+    context: &'a project::ProjectContext,
+    explicit: Option<&'a str>,
+) -> Option<&'a str> {
+    explicit.or_else(|| context.workspace_id())
+}
+
 fn resolve_bless_branch(
     context: &project::ProjectContext,
     cwd: &std::path::Path,
@@ -441,7 +426,7 @@ fn resolve_bless_branch(
                 project::ProjectContext::HumanCheckout(_) => {
                     bail!("bless requires a branch, or run it from an agent workspace on an agent branch");
                 }
-                project::ProjectContext::AgentWorkspace(project) => current_agent_branch(
+                project::ProjectContext::AgentWorkspace { project, .. } => current_agent_branch(
                     project,
                     cwd,
                     "current agent branch is required for bless without a branch",
@@ -476,11 +461,13 @@ fn resolve_sync_rebase(
             project::ProjectContext::HumanCheckout(_) => {
                 bail!("sync --rebase without a branch must be run from an agent workspace");
             }
-            project::ProjectContext::AgentWorkspace(project) => Ok(Some(current_agent_branch(
-                project,
-                cwd,
-                "current agent branch is required for sync --rebase without a branch",
-            )?)),
+            project::ProjectContext::AgentWorkspace { project, .. } => {
+                Ok(Some(current_agent_branch(
+                    project,
+                    cwd,
+                    "current agent branch is required for sync --rebase without a branch",
+                )?))
+            }
         },
     }
 }

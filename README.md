@@ -50,6 +50,9 @@ agd diff agent/refactor-auth
 agd files agent/refactor-auth
 ```
 
+For additional managed workspaces, pass `--workspace <id>` from the human checkout,
+or run review commands from inside that agent workspace to target it by default.
+
 After the human target branch moves, sync the workspace and rebase the current agent branch from inside the agent workspace:
 
 ```bash

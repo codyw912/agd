@@ -58,15 +58,24 @@ pub struct HumanMarker {
 #[derive(Debug, Clone)]
 pub enum ProjectContext {
     HumanCheckout(Project),
-    AgentWorkspace(Project),
+    AgentWorkspace {
+        project: Project,
+        workspace_id: String,
+    },
 }
 
 impl ProjectContext {
     pub fn project(&self) -> &Project {
         match self {
-            ProjectContext::HumanCheckout(project) | ProjectContext::AgentWorkspace(project) => {
-                project
-            }
+            ProjectContext::HumanCheckout(project)
+            | ProjectContext::AgentWorkspace { project, .. } => project,
+        }
+    }
+
+    pub fn workspace_id(&self) -> Option<&str> {
+        match self {
+            ProjectContext::HumanCheckout(_) => None,
+            ProjectContext::AgentWorkspace { workspace_id, .. } => Some(workspace_id),
         }
     }
 }
@@ -177,10 +186,10 @@ pub fn discover(paths: &AgdPaths, cwd: &Path) -> Result<ProjectContext> {
 
     let workspace_marker = find_workspace_marker(cwd).context("not an AGD project or workspace")?;
     let marker = read_json::<crate::workspace::WorkspaceMarker>(&workspace_marker)?;
-    Ok(ProjectContext::AgentWorkspace(load_project(
-        paths,
-        &marker.project_id,
-    )?))
+    Ok(ProjectContext::AgentWorkspace {
+        project: load_project(paths, &marker.project_id)?,
+        workspace_id: marker.workspace_id,
+    })
 }
 
 fn resolve_git_dir(repo: &Path, git_dir: &str) -> PathBuf {

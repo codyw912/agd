@@ -10,9 +10,11 @@ to manually enter those workspace directories.
 - `agd branches --workspace <id>` lists review branches from the selected workspace.
 - `agd log --workspace <id> <branch>`, `agd diff --workspace <id> <branch>`,
   and `agd files --workspace <id> <branch>` read from the selected workspace.
+- When run inside an agent workspace, review commands default to that current
+  workspace if `--workspace` is omitted.
 - JSON output uses the same selected workspace.
 - Existing default-workspace behavior remains unchanged when `--workspace` is not
-  provided.
+  provided from the human checkout.
 
 ## Verification
 
