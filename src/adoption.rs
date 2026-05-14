@@ -148,10 +148,6 @@ fn prepare<'a>(
     require_clean(&project.human_checkout, "human checkout")?;
     require_clean(&workspace.path, "agent workspace")?;
 
-    let lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "bless")?;
-    let safety_ref = format!("refs/agd/safety/{}", lock.operation_id());
-    git::run(&project.human_checkout, ["update-ref", &safety_ref, "HEAD"])?;
-
     let (target_branch, adoption_branch) = match target {
         AdoptionTarget::Direct => (
             git::stdout(&project.human_checkout, ["branch", "--show-current"])?
@@ -164,14 +160,11 @@ fn prepare<'a>(
             adoption_branch,
         } => {
             ensure_adoption_branch_available(project, &adoption_branch)?;
-            git::run(
-                &project.human_checkout,
-                ["switch", "-c", &adoption_branch, &target_branch],
-            )?;
             (target_branch, Some(adoption_branch))
         }
     };
 
+    let lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "bless")?;
     let fetched_ref = format!("refs/agd/agent/{branch}");
     let fetch_spec = format!("refs/heads/{branch}:{fetched_ref}");
     git::run(
@@ -183,9 +176,18 @@ fn prepare<'a>(
         ],
     )?;
 
+    let safety_ref = format!("refs/agd/safety/{}", lock.operation_id());
+    git::run(&project.human_checkout, ["update-ref", &safety_ref, "HEAD"])?;
+    if let Some(adoption_branch) = &adoption_branch {
+        git::run(
+            &project.human_checkout,
+            ["switch", "-c", adoption_branch, &target_branch],
+        )?;
+    }
+
     let base = git::stdout(
         &project.human_checkout,
-        ["merge-base", "HEAD", &fetched_ref],
+        ["merge-base", &target_branch, &fetched_ref],
     )?;
     let tip = git::stdout(&project.human_checkout, ["rev-parse", &fetched_ref])?;
 
