@@ -73,7 +73,7 @@ pub fn open_blessed(
     let target_branch = target_branch.unwrap_or_else(|| project.default_target.clone());
     let adoption_branch =
         adoption_branch.unwrap_or_else(|| adoption::derive_adoption_branch(&branch));
-    let result = adoption::bless(
+    let result = match adoption::bless(
         paths,
         project,
         &branch,
@@ -82,12 +82,10 @@ pub fn open_blessed(
             target_branch: target_branch.clone(),
             adoption_branch,
         },
-    )
-    .map_err(|error| {
-        anyhow!(
-            "{error}\nrun `agd pr --continue` after fixing the adoption problem, or `agd bless --abort` to restore the human checkout"
-        )
-    })?;
+    ) {
+        Ok(result) => result,
+        Err(error) => return Err(pr_bless_error(project, error)),
+    };
     let adoption_branch = result
         .adoption_branch
         .as_ref()
@@ -95,6 +93,16 @@ pub fn open_blessed(
     let state = PrState::from_bless_result(&target_branch, adoption_branch, &result);
     write_pr_state(project, &state)?;
     finish_blessed_pr(project, &state)
+}
+
+fn pr_bless_error(project: &Project, error: anyhow::Error) -> anyhow::Error {
+    match adoption::has_pending_bless(project) {
+        Ok(true) => anyhow!(
+            "{error}\nrun `agd pr --continue` after fixing the adoption problem, or `agd bless --abort` to restore the human checkout"
+        ),
+        Ok(false) => error,
+        Err(state_error) => anyhow!("{error}\nfailed to inspect bless recovery state: {state_error}"),
+    }
 }
 
 pub fn continue_blessed(paths: &AgdPaths, project: &Project) -> Result<PullRequestResult> {

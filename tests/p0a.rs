@@ -2691,6 +2691,30 @@ fn pr_continue_finishes_interrupted_blessed_pr() {
 }
 
 #[test]
+fn pr_bless_missing_agent_branch_omits_recovery_guidance() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["pr", "--bless", "agent/missing"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("agd pr --continue").not())
+        .stderr(predicate::str::contains("agd bless --abort").not());
+
+    assert!(!fixture.human.join(".git/agd/bless.json").exists());
+}
+
+#[test]
 fn pr_continue_retries_after_adoption_push_failure() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
