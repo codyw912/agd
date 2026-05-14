@@ -105,10 +105,10 @@ agd identity
 agd doctor [--repair]
 agd sync [--rebase [branch]]
 agd handoff [--include-untracked <path>...]
-agd branches
-agd log [branch]
-agd diff [branch]
-agd files [branch]
+agd branches [--workspace <id>]
+agd log [--workspace <id>] [branch]
+agd diff [--workspace <id>] [branch]
+agd files [--workspace <id>] [branch]
 agd bless [--preserve | --merge] [--target <branch>] [--branch <name>] <branch>
 agd bless --direct [--preserve | --merge] <branch>
 agd bless --continue

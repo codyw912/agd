@@ -1,12 +1,12 @@
 use crate::branch_policy;
 use crate::git;
-use crate::project::Project;
+use crate::project::{Project, Workspace};
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::path::Path;
 
-pub fn branches(project: &Project) -> Result<()> {
-    for branch in branch_summaries(project)? {
+pub fn branches(project: &Project, workspace_id: Option<&str>) -> Result<()> {
+    for branch in branch_summaries(project, workspace_id)? {
         println!(
             "{}  {}  {}",
             branch.branch,
@@ -17,8 +17,12 @@ pub fn branches(project: &Project) -> Result<()> {
     Ok(())
 }
 
-pub fn branch_names(project: &Project) -> Result<Vec<String>> {
-    let workspace = default_workspace(project)?;
+pub fn branch_names(project: &Project, workspace_id: Option<&str>) -> Result<Vec<String>> {
+    let workspace = selected_workspace(project, workspace_id)?;
+    branch_names_for_workspace(project, workspace)
+}
+
+fn branch_names_for_workspace(project: &Project, workspace: &Workspace) -> Result<Vec<String>> {
     let output = git::stdout(
         &workspace.path,
         ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
@@ -37,9 +41,12 @@ pub struct AgentBranchSummary {
     pub files_changed: usize,
 }
 
-pub fn branch_summaries(project: &Project) -> Result<Vec<AgentBranchSummary>> {
-    let workspace = default_workspace(project)?;
-    branch_names(project)?
+pub fn branch_summaries(
+    project: &Project,
+    workspace_id: Option<&str>,
+) -> Result<Vec<AgentBranchSummary>> {
+    let workspace = selected_workspace(project, workspace_id)?;
+    branch_names_for_workspace(project, workspace)?
         .into_iter()
         .map(|branch| {
             let commits = git::stdout(
@@ -67,8 +74,13 @@ pub fn branch_summaries(project: &Project) -> Result<Vec<AgentBranchSummary>> {
         .collect()
 }
 
-pub fn log(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
-    let log = commit_log(project, branch, cwd)?;
+pub fn log(
+    project: &Project,
+    workspace_id: Option<&str>,
+    branch: Option<&str>,
+    cwd: &Path,
+) -> Result<()> {
+    let log = commit_log(project, workspace_id, branch, cwd)?;
     for commit in log.commits {
         println!("{} {}", commit.short_hash, commit.subject);
     }
@@ -88,8 +100,13 @@ pub struct CommitLogEntry {
     pub subject: String,
 }
 
-pub fn commit_log(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<CommitLog> {
-    let workspace = default_workspace(project)?;
+pub fn commit_log(
+    project: &Project,
+    workspace_id: Option<&str>,
+    branch: Option<&str>,
+    cwd: &Path,
+) -> Result<CommitLog> {
+    let workspace = selected_workspace(project, workspace_id)?;
     let branch = resolve_branch(project, branch, cwd)?;
     let hashes = git::stdout(
         &workspace.path,
@@ -113,8 +130,13 @@ fn commit_log_entry(repo: &Path, hash: &str) -> Result<CommitLogEntry> {
     })
 }
 
-pub fn diff(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
-    let diff = branch_diff(project, branch, cwd)?;
+pub fn diff(
+    project: &Project,
+    workspace_id: Option<&str>,
+    branch: Option<&str>,
+    cwd: &Path,
+) -> Result<()> {
+    let diff = branch_diff(project, workspace_id, branch, cwd)?;
     print!("{}", diff.patch);
     Ok(())
 }
@@ -125,8 +147,13 @@ pub struct BranchDiff {
     pub patch: String,
 }
 
-pub fn branch_diff(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<BranchDiff> {
-    let workspace = default_workspace(project)?;
+pub fn branch_diff(
+    project: &Project,
+    workspace_id: Option<&str>,
+    branch: Option<&str>,
+    cwd: &Path,
+) -> Result<BranchDiff> {
+    let workspace = selected_workspace(project, workspace_id)?;
     let branch = resolve_branch(project, branch, cwd)?;
     let patch = git::stdout(
         &workspace.path,
@@ -135,8 +162,13 @@ pub fn branch_diff(project: &Project, branch: Option<&str>, cwd: &Path) -> Resul
     Ok(BranchDiff { branch, patch })
 }
 
-pub fn files(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<()> {
-    let files = changed_files(project, branch, cwd)?;
+pub fn files(
+    project: &Project,
+    workspace_id: Option<&str>,
+    branch: Option<&str>,
+    cwd: &Path,
+) -> Result<()> {
+    let files = changed_files(project, workspace_id, branch, cwd)?;
     for file in files.files {
         println!("{file}");
     }
@@ -149,8 +181,13 @@ pub struct ChangedFiles {
     pub files: Vec<String>,
 }
 
-pub fn changed_files(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<ChangedFiles> {
-    let workspace = default_workspace(project)?;
+pub fn changed_files(
+    project: &Project,
+    workspace_id: Option<&str>,
+    branch: Option<&str>,
+    cwd: &Path,
+) -> Result<ChangedFiles> {
+    let workspace = selected_workspace(project, workspace_id)?;
     let branch = resolve_branch(project, branch, cwd)?;
     let output = git::stdout(
         &workspace.path,
@@ -179,12 +216,16 @@ fn resolve_branch(project: &Project, branch: Option<&str>, cwd: &Path) -> Result
     Ok(branch)
 }
 
-fn default_workspace(project: &Project) -> Result<&crate::project::Workspace> {
+fn selected_workspace<'a>(
+    project: &'a Project,
+    workspace_id: Option<&str>,
+) -> Result<&'a crate::project::Workspace> {
+    let workspace_id = workspace_id.unwrap_or(&project.default_workspace);
     project
         .workspaces
         .iter()
-        .find(|workspace| workspace.id == project.default_workspace)
-        .context("default workspace not found")
+        .find(|workspace| workspace.id == workspace_id)
+        .with_context(|| format!("workspace not found: {workspace_id}"))
 }
 
 fn is_review_branch(project: &Project, branch: &str) -> bool {
