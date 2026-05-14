@@ -1669,6 +1669,26 @@ fn bless_commit_failure_points_to_continue() {
 }
 
 #[test]
+fn bless_continue_reports_missing_recovery_state() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["bless", "--continue"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no pending bless operation"));
+}
+
+#[test]
 fn json_bless_continue_outputs_continued_status() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -2700,6 +2720,26 @@ fn pr_continue_retries_after_adoption_push_failure() {
     assert!(gh_args.contains("--title\nretry PR publication\n"));
     assert!(gh_args.contains("Human adoption branch: pr-push-retry"));
     assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-push-retry"));
+}
+
+#[test]
+fn pr_continue_reports_missing_recovery_state() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["pr", "--continue"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("no pending bless operation"));
 }
 
 #[test]
