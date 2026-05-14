@@ -1243,6 +1243,33 @@ fn bless_refuses_existing_human_adoption_branch() {
 }
 
 #[test]
+fn bless_missing_agent_branch_does_not_create_adoption_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    fixture
+        .agd()
+        .args(["bless", "agent/missing"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure();
+
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "main");
+    fixture.git_fails(
+        &fixture.human,
+        ["rev-parse", "--verify", "refs/heads/missing"],
+    );
+}
+
+#[test]
 fn bless_squashes_agent_branch_into_one_human_commit() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
