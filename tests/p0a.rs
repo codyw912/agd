@@ -2602,6 +2602,7 @@ fn pr_continue_finishes_interrupted_blessed_pr() {
         .stdout(predicate::str::contains("https://example.test/pr/1"));
 
     assert!(!fixture.human.join(".git/agd/bless.json").exists());
+    assert!(!fixture.human.join(".git/agd/pr.json").exists());
     fixture.git_stdout(
         std::path::Path::new(remote),
         ["rev-parse", "--verify", "refs/heads/cody/pr-continue"],
@@ -2620,6 +2621,85 @@ fn pr_continue_finishes_interrupted_blessed_pr() {
     assert!(gh_args.contains("Base branch: release"));
     assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-continue"));
     assert!(gh_args.contains("AGD-Adoption: squash"));
+}
+
+#[test]
+fn pr_continue_retries_after_adoption_push_failure() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_failing_human_signer();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    let missing_remote = fixture._tmp.path().join("missing.git");
+    let missing_remote = missing_remote.to_str().expect("missing remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-push-retry"]);
+    fixture.write_file(&workspace, "pr-push-retry.txt", "retry publication\n");
+    fixture.git_in(&workspace, ["add", "pr-push-retry.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "retry PR publication"]);
+
+    fixture
+        .agd()
+        .args([
+            "pr",
+            "--bless",
+            "--branch",
+            "pr-push-retry",
+            "agent/pr-push-retry",
+        ])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("test signer unavailable"));
+    assert!(fixture.human.join(".git/agd/bless.json").exists());
+
+    fixture.configure_fake_human_signer();
+    fixture.git(["remote", "set-url", "--push", "origin", missing_remote]);
+    fixture
+        .agd()
+        .args(["pr", "--continue"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("git failed"));
+
+    assert!(!fixture.human.join(".git/agd/bless.json").exists());
+    assert!(fixture.human.join(".git/agd/pr.json").exists());
+    let current_branch = fixture.git_stdout(&fixture.human, ["branch", "--show-current"]);
+    assert_eq!(current_branch.trim(), "pr-push-retry");
+
+    fixture.git(["remote", "set-url", "--push", "origin", remote]);
+    let gh_capture = fixture._tmp.path().join("gh-pr-push-retry-args.txt");
+    fixture
+        .agd()
+        .args(["pr", "--continue"])
+        .env("PATH", fixture.fake_gh_path(&gh_capture))
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("https://example.test/pr/1"));
+
+    assert!(!fixture.human.join(".git/agd/pr.json").exists());
+    fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["rev-parse", "--verify", "refs/heads/pr-push-retry"],
+    );
+    let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
+    assert!(gh_args.contains("--base\nmain\n"));
+    assert!(gh_args.contains("--head\npr-push-retry\n"));
+    assert!(gh_args.contains("--title\nretry PR publication\n"));
+    assert!(gh_args.contains("Human adoption branch: pr-push-retry"));
+    assert!(gh_args.contains("AGD-Agent-Branch: agent/pr-push-retry"));
 }
 
 #[test]
