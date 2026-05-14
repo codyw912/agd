@@ -144,33 +144,56 @@ fn main() -> Result<()> {
                 println!("Handed off human changes to {}", result.workspace_id);
             }
         }
-        Some(Command::Branches) => {
+        Some(Command::Branches { workspace }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             if json {
-                json_output::branches(review::branch_names(context.project())?)?;
+                json_output::branches(review::branch_names(
+                    context.project(),
+                    workspace.as_deref(),
+                )?)?;
             } else {
-                review::branches(context.project())?;
+                review::branches(context.project(), workspace.as_deref())?;
             }
         }
-        Some(Command::Log { branch }) => {
+        Some(Command::Log { workspace, branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             if json {
-                let log = review::commit_log(context.project(), branch.as_deref(), &cwd)?;
+                let log = review::commit_log(
+                    context.project(),
+                    workspace.as_deref(),
+                    branch.as_deref(),
+                    &cwd,
+                )?;
                 json_output::print(&log)?;
             } else {
-                review::log(context.project(), branch.as_deref(), &cwd)?;
+                review::log(
+                    context.project(),
+                    workspace.as_deref(),
+                    branch.as_deref(),
+                    &cwd,
+                )?;
             }
         }
-        Some(Command::Diff { branch }) => {
+        Some(Command::Diff { workspace, branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             if json {
-                let diff = review::branch_diff(context.project(), branch.as_deref(), &cwd)?;
+                let diff = review::branch_diff(
+                    context.project(),
+                    workspace.as_deref(),
+                    branch.as_deref(),
+                    &cwd,
+                )?;
                 json_output::print(&diff)?;
             } else {
-                review::diff(context.project(), branch.as_deref(), &cwd)?;
+                review::diff(
+                    context.project(),
+                    workspace.as_deref(),
+                    branch.as_deref(),
+                    &cwd,
+                )?;
             }
         }
         Some(Command::Pr {
@@ -228,17 +251,23 @@ fn main() -> Result<()> {
             let context = project::discover(&paths, &cwd)?;
             shell_command::run(context.project())?;
         }
-        Some(Command::Files { branch }) => {
+        Some(Command::Files { workspace, branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             if json {
                 json_output::files(review::changed_files(
                     context.project(),
+                    workspace.as_deref(),
                     branch.as_deref(),
                     &cwd,
                 )?)?;
             } else {
-                review::files(context.project(), branch.as_deref(), &cwd)?;
+                review::files(
+                    context.project(),
+                    workspace.as_deref(),
+                    branch.as_deref(),
+                    &cwd,
+                )?;
             }
         }
         Some(Command::Discard {

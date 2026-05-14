@@ -32,11 +32,18 @@ pub enum Command {
         #[arg(long = "include-untracked")]
         include_untracked: Vec<PathBuf>,
     },
-    Branches,
+    Branches {
+        #[arg(long)]
+        workspace: Option<String>,
+    },
     Log {
+        #[arg(long)]
+        workspace: Option<String>,
         branch: Option<String>,
     },
     Diff {
+        #[arg(long)]
+        workspace: Option<String>,
         branch: Option<String>,
     },
     Pr {
@@ -55,6 +62,8 @@ pub enum Command {
     },
     Shell,
     Files {
+        #[arg(long)]
+        workspace: Option<String>,
         branch: Option<String>,
     },
     Discard {

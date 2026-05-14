@@ -2305,6 +2305,81 @@ fn review_commands_show_branch_changes() {
 }
 
 #[test]
+fn review_commands_target_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+
+    fixture.git_in(&default_workspace, ["switch", "-c", "agent/default-review"]);
+    fixture.write_file(&default_workspace, "default.txt", "default work\n");
+    fixture.git_in(&default_workspace, ["add", "default.txt"]);
+    fixture.git_in(&default_workspace, ["commit", "-m", "default review work"]);
+
+    fixture.git_in(&review_workspace, ["switch", "-c", "agent/named-review"]);
+    fixture.write_file(&review_workspace, "named.txt", "named review work\n");
+    fixture.git_in(&review_workspace, ["add", "named.txt"]);
+    fixture.git_in(&review_workspace, ["commit", "-m", "named review work"]);
+
+    fixture
+        .agd()
+        .args(["branches", "--workspace", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("agent/named-review"))
+        .stdout(predicate::str::contains("agent/default-review").not());
+
+    let branches = fixture.agd_json(
+        ["--json", "branches", "--workspace", "review"],
+        &fixture.human,
+    );
+    assert_eq!(
+        branches["branches"],
+        serde_json::json!(["agent/named-review"])
+    );
+
+    fixture
+        .agd()
+        .args(["log", "--workspace", "review", "agent/named-review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("named review work"));
+
+    fixture
+        .agd()
+        .args(["diff", "--workspace", "review", "agent/named-review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("diff --git"))
+        .stdout(predicate::str::contains("named.txt"));
+
+    fixture
+        .agd()
+        .args(["files", "--workspace", "review", "agent/named-review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("named.txt"));
+}
+
+#[test]
 fn json_branches_and_files_outputs_are_machine_readable() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
