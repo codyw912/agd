@@ -402,7 +402,13 @@ fn write_bless_state(project: &Project, state: &BlessState) -> Result<()> {
 
 fn read_bless_state(project: &Project) -> Result<BlessState> {
     let path = bless_state_path(project)?;
-    let contents = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
+    let contents = match fs::read(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            anyhow::bail!("no pending bless operation");
+        }
+        Err(error) => return Err(error).with_context(|| format!("read {}", path.display())),
+    };
     serde_json::from_slice(&contents).with_context(|| format!("parse {}", path.display()))
 }
 
