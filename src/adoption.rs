@@ -425,12 +425,17 @@ fn remove_bless_state(project: &Project) -> Result<()> {
 }
 
 fn require_bless_state(project: &Project) -> Result<()> {
+    if !has_pending_bless(project)? {
+        anyhow::bail!("no pending bless operation");
+    }
+    Ok(())
+}
+
+pub fn has_pending_bless(project: &Project) -> Result<bool> {
     let path = bless_state_path(project)?;
     match fs::metadata(&path) {
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            anyhow::bail!("no pending bless operation");
-        }
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(error).with_context(|| format!("stat {}", path.display())),
     }
 }
