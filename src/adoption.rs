@@ -147,6 +147,7 @@ fn prepare<'a>(
 
     require_clean(&project.human_checkout, "human checkout")?;
     require_clean(&workspace.path, "agent workspace")?;
+    ensure_agent_branch_exists(&workspace.path, branch)?;
 
     let (target_branch, adoption_branch) = match target {
         AdoptionTarget::Direct => (
@@ -202,6 +203,14 @@ fn prepare<'a>(
         adoption_branch,
         _lock: lock,
     })
+}
+
+fn ensure_agent_branch_exists(workspace: &Path, branch: &str) -> Result<()> {
+    let refname = format!("refs/heads/{branch}");
+    if git::run(workspace, ["show-ref", "--verify", "--quiet", &refname]).is_err() {
+        anyhow::bail!("agent branch not found: {branch}");
+    }
+    Ok(())
 }
 
 fn ensure_adoption_branch_available(project: &Project, branch: &str) -> Result<()> {
