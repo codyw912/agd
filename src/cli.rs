@@ -18,7 +18,10 @@ pub enum Command {
         #[arg(long)]
         workspace: Option<String>,
     },
-    Status,
+    Status {
+        #[arg(long)]
+        workspace: Option<String>,
+    },
     Identity,
     Doctor {
         #[arg(long)]

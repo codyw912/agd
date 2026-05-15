@@ -4,6 +4,9 @@ use anyhow::Result;
 
 pub use crate::review::AgentBranchSummary;
 
-pub fn agent_branches(project: &Project) -> Result<Vec<AgentBranchSummary>> {
-    review::branch_summaries(project, None)
+pub fn agent_branches(
+    project: &Project,
+    workspace_id: Option<&str>,
+) -> Result<Vec<AgentBranchSummary>> {
+    review::branch_summaries(project, workspace_id)
 }

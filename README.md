@@ -51,8 +51,8 @@ agd files agent/refactor-auth
 ```
 
 For additional managed workspaces, pass `--workspace <id>` from the human checkout,
-or run review, sync, handoff, and shell commands from inside that agent workspace to
-target it by default.
+or run status, review, sync, handoff, and shell commands from inside that agent
+workspace to target it by default.
 
 After the human target branch moves, sync the workspace and rebase the current
 agent branch from inside the agent workspace:
@@ -105,7 +105,7 @@ Your human checkout keeps its existing Git identity, signing setup, remotes, and
 ```bash
 agd init
 agd path [--workspace <id>]
-agd status
+agd status [--workspace <id>]
 agd identity
 agd doctor [--repair]
 agd sync [--workspace <id>] [--rebase [branch]]

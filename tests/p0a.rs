@@ -647,6 +647,92 @@ fn status_shows_pending_agent_branch_summaries() {
 }
 
 #[test]
+fn status_targets_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+
+    fixture.git_in(&default_workspace, ["switch", "-c", "agent/default-status"]);
+    fixture.write_file(&default_workspace, "default-status.txt", "default status\n");
+    fixture.git_in(&default_workspace, ["add", "default-status.txt"]);
+    fixture.git_in(&default_workspace, ["commit", "-m", "default status work"]);
+
+    fixture.git_in(&review_workspace, ["switch", "-c", "agent/review-status"]);
+    fixture.write_file(&review_workspace, "review-status.txt", "review status\n");
+    fixture.git_in(&review_workspace, ["add", "review-status.txt"]);
+    fixture.git_in(&review_workspace, ["commit", "-m", "review status work"]);
+
+    fixture
+        .agd()
+        .args(["status", "--workspace", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            review_workspace.to_str().expect("review path utf-8"),
+        ))
+        .stdout(predicate::str::contains("agent/review-status"))
+        .stdout(predicate::str::contains("agent/default-status").not());
+}
+
+#[test]
+fn status_defaults_to_current_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+
+    fixture.git_in(&default_workspace, ["switch", "-c", "agent/default-status"]);
+    fixture.write_file(&default_workspace, "default-status.txt", "default status\n");
+    fixture.git_in(&default_workspace, ["add", "default-status.txt"]);
+    fixture.git_in(&default_workspace, ["commit", "-m", "default status work"]);
+
+    fixture.git_in(&review_workspace, ["switch", "-c", "agent/review-status"]);
+    fixture.write_file(&review_workspace, "review-status.txt", "review status\n");
+    fixture.git_in(&review_workspace, ["add", "review-status.txt"]);
+    fixture.git_in(&review_workspace, ["commit", "-m", "review status work"]);
+
+    fixture
+        .agd()
+        .arg("status")
+        .current_dir(&review_workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Mode: agent workspace"))
+        .stdout(predicate::str::contains("agent/review-status"))
+        .stdout(predicate::str::contains("agent/default-status").not());
+}
+
+#[test]
 fn identity_shows_project_agent_identity() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -1051,6 +1137,58 @@ fn json_status_outputs_agent_branch_summaries() {
             },
             {
                 "branch": "agent/status-json-two",
+                "commits": 1,
+                "files_changed": 1
+            }
+        ])
+    );
+}
+
+#[test]
+fn json_status_targets_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+
+    fixture.git_in(&default_workspace, ["switch", "-c", "agent/default-status"]);
+    fixture.write_file(&default_workspace, "default-status.txt", "default status\n");
+    fixture.git_in(&default_workspace, ["add", "default-status.txt"]);
+    fixture.git_in(&default_workspace, ["commit", "-m", "default status work"]);
+
+    fixture.git_in(&review_workspace, ["switch", "-c", "agent/review-status"]);
+    fixture.write_file(&review_workspace, "review-status.txt", "review status\n");
+    fixture.git_in(&review_workspace, ["add", "review-status.txt"]);
+    fixture.git_in(&review_workspace, ["commit", "-m", "review status work"]);
+
+    let status = fixture.agd_json(
+        ["--json", "status", "--workspace", "review"],
+        &fixture.human,
+    );
+    assert_eq!(status["workspace"]["id"], "review");
+    assert_eq!(
+        status["workspace"]["path"],
+        review_workspace.to_str().expect("review path utf-8")
+    );
+    assert_eq!(
+        status["agent_branches"],
+        serde_json::json!([
+            {
+                "branch": "agent/review-status",
                 "commits": 1,
                 "files_changed": 1
             }
