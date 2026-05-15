@@ -4875,6 +4875,52 @@ fn discard_targets_named_workspace() {
 }
 
 #[test]
+fn discard_defaults_to_current_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review = std::path::PathBuf::from(review["path"].as_str().expect("review path"));
+
+    fixture.git_in(&default_workspace, ["switch", "-c", "agent/keep-default"]);
+    fixture.write_file(&default_workspace, "keep.txt", "keep default\n");
+    fixture.git_in(&default_workspace, ["add", "keep.txt"]);
+    fixture.git_in(&default_workspace, ["commit", "-m", "keep default"]);
+
+    fixture.git_in(&review, ["switch", "-c", "agent/review-discard"]);
+    fixture.write_file(&review, "discard-review.txt", "discard review\n");
+    fixture.git_in(&review, ["add", "discard-review.txt"]);
+    fixture.git_in(&review, ["commit", "-m", "discard review"]);
+    fixture.git_in(&review, ["switch", "main"]);
+
+    fixture
+        .agd()
+        .args(["discard", "agent/review-discard"])
+        .current_dir(&review)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Discarded agent/review-discard"));
+
+    fixture.git_fails(&review, ["rev-parse", "--verify", "agent/review-discard"]);
+    fixture.git_stdout(
+        &default_workspace,
+        ["rev-parse", "--verify", "agent/keep-default"],
+    );
+}
+
+#[test]
 fn discard_rejects_main_mirror_when_default_target_is_not_main() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -5135,6 +5181,52 @@ fn reset_workspace_targets_named_workspace() {
         .agd()
         .args(["reset-workspace", "--workspace", "review", "--force"])
         .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Reset workspace"));
+
+    assert!(review.join(".git").exists());
+    assert!(review.join(".agd/workspace.json").exists());
+    assert!(!review.join("dirty-review.txt").exists());
+    fixture.git_fails(&review, ["rev-parse", "--verify", "agent/review-reset"]);
+    fixture.git_stdout(
+        &default_workspace,
+        ["rev-parse", "--verify", "agent/keep-default"],
+    );
+}
+
+#[test]
+fn reset_workspace_defaults_to_current_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review = std::path::PathBuf::from(review["path"].as_str().expect("review path"));
+
+    fixture.git_in(&default_workspace, ["switch", "-c", "agent/keep-default"]);
+    fixture.write_file(&default_workspace, "keep.txt", "keep default\n");
+    fixture.git_in(&default_workspace, ["add", "keep.txt"]);
+    fixture.git_in(&default_workspace, ["commit", "-m", "keep default"]);
+
+    fixture.git_in(&review, ["switch", "-c", "agent/review-reset"]);
+    fixture.write_file(&review, "dirty-review.txt", "dirty review\n");
+
+    fixture
+        .agd()
+        .args(["reset-workspace", "--force"])
+        .current_dir(&review)
         .assert()
         .success()
         .stdout(predicate::str::contains("Reset workspace"));
