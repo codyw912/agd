@@ -66,7 +66,10 @@ pub enum Command {
     Verify {
         commit: String,
     },
-    Shell,
+    Shell {
+        #[arg(long)]
+        workspace: Option<String>,
+    },
     Files {
         #[arg(long)]
         workspace: Option<String>,
