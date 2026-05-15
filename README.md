@@ -10,6 +10,28 @@ AGD is not an agent harness. Agents keep using normal Git commands inside a norm
 
 AGD is alpha software under active development. The core workflow is usable, but command behavior, metadata formats, and safety checks may still change as the project matures.
 
+## Installation
+
+AGD currently ships as a Rust CLI. Install it with Cargo:
+
+```bash
+cargo install --git https://github.com/codyw912/agd.git --locked
+```
+
+To install from a specific release tag:
+
+```bash
+cargo install --git https://github.com/codyw912/agd.git --tag v0.1.0 --locked
+```
+
+For local development from a checkout:
+
+```bash
+cargo install --path . --locked
+```
+
+AGD expects Git to be available. `agd pr` can use the GitHub CLI (`gh`) or GitLab CLI (`glab`) to open pull requests or merge requests; without those tools, AGD prints the pushed branch and a compare URL so you can finish in the browser.
+
 ## Core Workflow
 
 Initialize AGD from your human checkout:
@@ -138,6 +160,15 @@ AGD separates authority, not execution.
 Agent work happens in a separate Git clone with a local agent identity and no access to your human signing key. The human approval boundary is explicit: review the branch, then bless it onto a human adoption branch, preserve it, merge it, or explicitly adopt it directly. AGD also blocks default pushes from the agent workspace and treats protected branch names such as `main`, `master`, `trunk`, `develop`, `release/*`, `stable/*`, `production/*`, and `prod/*` as non-agent branches.
 
 AGD does not sandbox filesystems, networks, credentials, or processes. Use separate sandboxing if you need those controls.
+
+## Known Limitations
+
+- AGD is alpha software. Metadata formats, command defaults, and recovery behavior may change before a stable release.
+- AGD does not provide process, filesystem, network, or credential sandboxing.
+- Binary release artifacts are not published yet; install with Cargo for now.
+- `agd pr` needs `gh` or `glab` for automatic pull request creation. Without either tool, AGD falls back to manual next steps.
+- Git LFS and submodules are detected by `agd doctor`, but AGD does not install or manage those tools for the workspace.
+- AGD is designed around Git branches and pull requests. Hosts or repositories with unusual branch policies may need explicit `--branch` and `--target` options.
 
 ## Development
 
