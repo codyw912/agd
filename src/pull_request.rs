@@ -2,7 +2,7 @@ use crate::adoption::{self, AdoptionMode, AdoptionTarget};
 use crate::branch_policy;
 use crate::git;
 use crate::paths::AgdPaths;
-use crate::project::Project;
+use crate::project::{Project, Workspace};
 use crate::provenance;
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -25,8 +25,13 @@ pub struct PullRequestResult {
     pub next_step: Option<String>,
 }
 
-pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullRequestResult> {
-    let workspace = default_workspace(project)?;
+pub fn open(
+    project: &Project,
+    workspace_id: Option<&str>,
+    branch: Option<&str>,
+    cwd: &Path,
+) -> Result<PullRequestResult> {
+    let workspace = find_workspace(project, workspace_id)?;
     let branch = resolve_branch(project, branch, cwd)?;
     let pr_ref = format!("refs/agd/pr/{branch}");
     let fetch_spec = format!("refs/heads/{branch}:{pr_ref}");
@@ -64,6 +69,7 @@ pub fn open(project: &Project, branch: Option<&str>, cwd: &Path) -> Result<PullR
 pub fn open_blessed(
     paths: &AgdPaths,
     project: &Project,
+    workspace_id: Option<&str>,
     branch: Option<&str>,
     target_branch: Option<String>,
     adoption_branch: Option<String>,
@@ -76,6 +82,7 @@ pub fn open_blessed(
     let result = match adoption::bless(
         paths,
         project,
+        workspace_id,
         &branch,
         AdoptionMode::Squash,
         AdoptionTarget::Branch {
@@ -515,11 +522,7 @@ fn parse_agd_trailers(message: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
-fn pr_body(
-    project: &Project,
-    workspace: &crate::project::Workspace,
-    branch: &str,
-) -> Result<String> {
+fn pr_body(project: &Project, workspace: &Workspace, branch: &str) -> Result<String> {
     let base_commit = git::stdout(&workspace.path, ["rev-parse", &project.default_target])?;
     let agent_tip = git::stdout(&workspace.path, ["rev-parse", branch])?;
     let patch_sha256 =
@@ -580,10 +583,11 @@ fn resolve_branch(project: &Project, branch: Option<&str>, cwd: &Path) -> Result
     Ok(branch)
 }
 
-fn default_workspace(project: &Project) -> Result<&crate::project::Workspace> {
+fn find_workspace<'a>(project: &'a Project, workspace_id: Option<&str>) -> Result<&'a Workspace> {
+    let workspace_id = workspace_id.unwrap_or(&project.default_workspace);
     project
         .workspaces
         .iter()
-        .find(|workspace| workspace.id == project.default_workspace)
-        .context("default workspace not found")
+        .find(|workspace| workspace.id == workspace_id)
+        .with_context(|| format!("workspace not found: {workspace_id}"))
 }

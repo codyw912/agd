@@ -2,7 +2,7 @@ use crate::branch_policy;
 use crate::git;
 use crate::operation_lock::OperationLock;
 use crate::paths::AgdPaths;
-use crate::project::Project;
+use crate::project::{Project, Workspace};
 use crate::provenance;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -51,6 +51,7 @@ pub struct BlessResult {
 pub fn bless(
     paths: &AgdPaths,
     project: &Project,
+    workspace_id: Option<&str>,
     branch: &str,
     mode: AdoptionMode,
     target: AdoptionTarget,
@@ -58,7 +59,7 @@ pub fn bless(
     if !branch_policy::is_agent_branch(project, branch) {
         anyhow::bail!("agent branch is required");
     }
-    let prepared = prepare(paths, project, branch, target)?;
+    let prepared = prepare(paths, project, workspace_id, branch, target)?;
     match mode {
         AdoptionMode::Squash => bless_squash(project, &prepared),
         AdoptionMode::Preserve => bless_preserve(project, &prepared),
@@ -123,7 +124,7 @@ pub fn continue_bless(paths: &AgdPaths, project: &Project) -> Result<BlessContin
 }
 
 struct PreparedAdoption<'a> {
-    workspace: &'a crate::project::Workspace,
+    workspace: &'a Workspace,
     branch: &'a str,
     fetched_ref: String,
     base: String,
@@ -136,14 +137,11 @@ struct PreparedAdoption<'a> {
 fn prepare<'a>(
     paths: &AgdPaths,
     project: &'a Project,
+    workspace_id: Option<&str>,
     branch: &'a str,
     target: AdoptionTarget,
 ) -> Result<PreparedAdoption<'a>> {
-    let workspace = project
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.id == project.default_workspace)
-        .context("default workspace not found")?;
+    let workspace = find_workspace(project, workspace_id)?;
 
     require_clean(&project.human_checkout, "human checkout")?;
     require_clean(&workspace.path, "agent workspace")?;
@@ -203,6 +201,15 @@ fn prepare<'a>(
         adoption_branch,
         _lock: lock,
     })
+}
+
+fn find_workspace<'a>(project: &'a Project, workspace_id: Option<&str>) -> Result<&'a Workspace> {
+    let workspace_id = workspace_id.unwrap_or(&project.default_workspace);
+    project
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.id == workspace_id)
+        .with_context(|| format!("workspace not found: {workspace_id}"))
 }
 
 fn ensure_agent_branch_exists(workspace: &Path, branch: &str) -> Result<()> {
