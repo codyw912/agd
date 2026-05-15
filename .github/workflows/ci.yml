@@ -30,3 +30,6 @@ jobs:
 
       - name: Run lint
         run: just lint
+
+      - name: Check package
+        run: just package-check
