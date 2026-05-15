@@ -41,3 +41,6 @@ fmt-check:
 
 lint:
   just --justfile "{{justfile()}}" dev cargo clippy --all-targets --all-features -- -D warnings
+
+release-smoke:
+  just --justfile "{{justfile()}}" dev-shell "bash scripts/manual-proof.sh"

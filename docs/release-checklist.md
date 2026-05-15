@@ -17,7 +17,17 @@ Use this checklist before tagging an alpha release.
 
 ## Smoke Test
 
-Run the core flow in a disposable repository or fresh local clone:
+Run the local release smoke proof:
+
+```bash
+just release-smoke
+```
+
+This creates a disposable repository and checks init, doctor, status, agent
+identity, signing denial, push denial, review commands, sync, bless, and
+verification.
+
+Then run the hosted PR flow in a disposable repository or fresh local clone:
 
 ```bash
 agd init

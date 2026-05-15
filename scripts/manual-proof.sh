@@ -41,6 +41,8 @@ git -C "$human" commit -m "initial"
 
 cd "$human"
 AGD_HOME="$agd_home" "$agd_bin" init
+AGD_HOME="$agd_home" "$agd_bin" doctor
+AGD_HOME="$agd_home" "$agd_bin" status
 workspace="$(cd "$human" && AGD_HOME="$agd_home" "$agd_bin" path)"
 
 git -C "$workspace" switch -c agent/manual-proof
@@ -68,9 +70,19 @@ pushurl="$(git -C "$workspace" remote get-url --push origin)"
 test "$pushurl" = "agd-deny://push-disabled"
 
 cd "$human"
+AGD_HOME="$agd_home" "$agd_bin" branches | grep -q "agent/manual-proof"
+AGD_HOME="$agd_home" "$agd_bin" log agent/manual-proof | grep -q "agent two"
+AGD_HOME="$agd_home" "$agd_bin" diff agent/manual-proof | grep -q "agent.txt"
+AGD_HOME="$agd_home" "$agd_bin" files agent/manual-proof | grep -q "agent.txt"
+
+cd "$workspace"
+AGD_HOME="$agd_home" "$agd_bin" sync --rebase
+
+cd "$human"
 AGD_HOME="$agd_home" "$agd_bin" bless agent/manual-proof
 
 git -C "$human" log -1 --show-signature --format=full
 git -C "$human" log -1 --format=%B | grep -q "AGD-Agent-Branch: agent/manual-proof"
+AGD_HOME="$agd_home" "$agd_bin" verify HEAD
 
 echo "manual proof passed"
