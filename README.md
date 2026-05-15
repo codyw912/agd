@@ -67,7 +67,7 @@ Adopt the branch:
 agd bless agent/refactor-auth
 ```
 
-By default, `bless` creates a human-owned adoption branch from the configured target branch. For example, `agent/refactor-auth` adopts onto `refactor-auth`, leaving `main` ready for a normal protected-branch PR. The integration branch `agent/main` adopts onto `adopt/main` by default so it does not collide with protected `main`. Use `--branch <name>` for project branch naming policies, `--target <branch>` for a non-default base branch, or `--direct` when you explicitly want to adopt onto the current human branch.
+By default, `bless` creates a human-owned adoption branch from the configured target branch. For example, `agent/refactor-auth` adopts onto `refactor-auth`, leaving `main` ready for a normal protected-branch PR. The integration branch `agent/main` adopts onto `adopt/main` by default so it does not collide with protected `main`. Use `--workspace <id>` to adopt from a named workspace, `--branch <name>` for project branch naming policies, `--target <branch>` for a non-default base branch, or `--direct` when you explicitly want to adopt onto the current human branch.
 
 To adopt and open the protected-branch PR in one step:
 
@@ -114,12 +114,12 @@ agd branches [--workspace <id>]
 agd log [--workspace <id>] [branch]
 agd diff [--workspace <id>] [branch]
 agd files [--workspace <id>] [branch]
-agd bless [--preserve | --merge] [--target <branch>] [--branch <name>] <branch>
-agd bless --direct [--preserve | --merge] <branch>
+agd bless [--workspace <id>] [--preserve | --merge] [--target <branch>] [--branch <name>] <branch>
+agd bless --direct [--workspace <id>] [--preserve | --merge] <branch>
 agd bless --continue
 agd bless --abort
-agd pr [branch]
-agd pr --bless [--target <branch>] [--branch <name>] [branch]
+agd pr [--workspace <id>] [branch]
+agd pr --bless [--workspace <id>] [--target <branch>] [--branch <name>] [branch]
 agd pr --continue
 agd verify <commit>
 agd shell

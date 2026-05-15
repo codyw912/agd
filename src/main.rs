@@ -187,6 +187,7 @@ fn main() -> Result<()> {
         Some(Command::Pr {
             bless,
             r#continue,
+            workspace,
             target,
             adoption_branch,
             branch,
@@ -194,14 +195,21 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             let result = if r#continue {
-                if bless || target.is_some() || adoption_branch.is_some() || branch.is_some() {
+                if bless
+                    || workspace.is_some()
+                    || target.is_some()
+                    || adoption_branch.is_some()
+                    || branch.is_some()
+                {
                     bail!("pr --continue cannot be combined with other pr options");
                 }
                 pull_request::continue_blessed(&paths, context.project())?
             } else if bless {
+                let workspace = selected_workspace(&context, workspace.as_deref());
                 pull_request::open_blessed(
                     &paths,
                     context.project(),
+                    workspace,
                     branch.as_deref(),
                     target,
                     adoption_branch,
@@ -211,7 +219,8 @@ fn main() -> Result<()> {
                 if target.is_some() || adoption_branch.is_some() {
                     bail!("pr --target and --branch require --bless");
                 }
-                pull_request::open(context.project(), branch.as_deref(), &cwd)?
+                let workspace = selected_workspace(&context, workspace.as_deref());
+                pull_request::open(context.project(), workspace, branch.as_deref(), &cwd)?
             };
             if json {
                 json_output::print(&result)?;
@@ -317,6 +326,7 @@ fn main() -> Result<()> {
         }
         Some(Command::Bless {
             branch,
+            workspace,
             preserve,
             merge,
             target,
@@ -330,6 +340,7 @@ fn main() -> Result<()> {
             if r#continue {
                 if abort
                     || branch.is_some()
+                    || workspace.is_some()
                     || preserve
                     || merge
                     || target.is_some()
@@ -348,6 +359,7 @@ fn main() -> Result<()> {
             }
             if abort {
                 if branch.is_some()
+                    || workspace.is_some()
                     || preserve
                     || merge
                     || target.is_some()
@@ -388,7 +400,9 @@ fn main() -> Result<()> {
                         .unwrap_or_else(|| adoption::derive_adoption_branch(&branch)),
                 }
             };
-            let result = adoption::bless(&paths, context.project(), &branch, mode, target)?;
+            let workspace = selected_workspace(&context, workspace.as_deref());
+            let result =
+                adoption::bless(&paths, context.project(), workspace, &branch, mode, target)?;
             if json {
                 json_output::print(&result)?;
             } else {

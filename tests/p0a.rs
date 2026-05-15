@@ -1044,6 +1044,54 @@ fn bless_defaults_to_current_agent_branch_from_workspace() {
 }
 
 #[test]
+fn bless_targets_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+
+    fixture.git_in(&default_workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&default_workspace, "default.txt", "default work\n");
+    fixture.git_in(&default_workspace, ["add", "default.txt"]);
+    fixture.git_in(&default_workspace, ["commit", "-m", "default agent work"]);
+
+    fixture.git_in(&review_workspace, ["switch", "-c", "agent/refactor-auth"]);
+    fixture.write_file(&review_workspace, "review.txt", "review work\n");
+    fixture.git_in(&review_workspace, ["add", "review.txt"]);
+    fixture.git_in(&review_workspace, ["commit", "-m", "review agent work"]);
+
+    fixture
+        .agd()
+        .args(["bless", "--workspace", "review", "agent/refactor-auth"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Blessed agent/refactor-auth onto refactor-auth",
+        ));
+
+    assert!(fixture.human.join("review.txt").exists());
+    assert!(!fixture.human.join("default.txt").exists());
+    let body = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%B"]);
+    assert!(body.contains("AGD-Workspace: review"));
+}
+
+#[test]
 fn bless_agent_main_defaults_to_adopt_main_branch() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -2607,6 +2655,67 @@ fn pr_command_pushes_agent_branch_and_invokes_gh() {
 }
 
 #[test]
+fn pr_command_targets_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+
+    fixture.git_in(&default_workspace, ["switch", "-c", "agent/pr-review"]);
+    fixture.write_file(&default_workspace, "default-pr.txt", "default PR work\n");
+    fixture.git_in(&default_workspace, ["add", "default-pr.txt"]);
+    fixture.git_in(&default_workspace, ["commit", "-m", "default PR work"]);
+
+    fixture.git_in(&review_workspace, ["switch", "-c", "agent/pr-review"]);
+    fixture.write_file(&review_workspace, "review-pr.txt", "review PR work\n");
+    fixture.git_in(&review_workspace, ["add", "review-pr.txt"]);
+    fixture.git_in(&review_workspace, ["commit", "-m", "review PR work"]);
+
+    let gh_capture = fixture._tmp.path().join("gh-review-args.txt");
+    let fake_path = fixture.fake_gh_path(&gh_capture);
+    fixture
+        .agd()
+        .args(["pr", "--workspace", "review", "agent/pr-review"])
+        .env("PATH", fake_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("https://example.test/pr/1"));
+
+    let review_file = fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["show", "refs/heads/agent/pr-review:review-pr.txt"],
+    );
+    assert_eq!(review_file, "review PR work\n");
+    fixture.git_fails(
+        std::path::Path::new(remote),
+        ["show", "refs/heads/agent/pr-review:default-pr.txt"],
+    );
+    let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
+    assert!(gh_args.contains("## Agent Commits\n- review PR work"));
+    assert!(gh_args.contains("## Changed Files\n- review-pr.txt"));
+}
+
+#[test]
 fn pr_bless_creates_human_adoption_branch_and_invokes_gh() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -2671,6 +2780,89 @@ fn pr_bless_creates_human_adoption_branch_and_invokes_gh() {
     assert!(gh_args.contains(
         "This PR was prepared with AGD; provenance details are below. Learn more: https://github.com/codyw912/agd"
     ));
+}
+
+#[test]
+fn pr_bless_targets_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+
+    fixture.git_in(
+        &default_workspace,
+        ["switch", "-c", "agent/pr-bless-review"],
+    );
+    fixture.write_file(
+        &default_workspace,
+        "default-pr-bless.txt",
+        "default bless work\n",
+    );
+    fixture.git_in(&default_workspace, ["add", "default-pr-bless.txt"]);
+    fixture.git_in(
+        &default_workspace,
+        ["commit", "-m", "default PR bless work"],
+    );
+
+    fixture.git_in(&review_workspace, ["switch", "-c", "agent/pr-bless-review"]);
+    fixture.write_file(
+        &review_workspace,
+        "review-pr-bless.txt",
+        "review bless work\n",
+    );
+    fixture.git_in(&review_workspace, ["add", "review-pr-bless.txt"]);
+    fixture.git_in(&review_workspace, ["commit", "-m", "review PR bless work"]);
+
+    let gh_capture = fixture._tmp.path().join("gh-bless-review-args.txt");
+    let fake_path = fixture.fake_gh_path(&gh_capture);
+    fixture
+        .agd()
+        .args([
+            "pr",
+            "--bless",
+            "--workspace",
+            "review",
+            "agent/pr-bless-review",
+        ])
+        .env("PATH", fake_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("https://example.test/pr/1"));
+
+    let adoption_file = fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["show", "refs/heads/pr-bless-review:review-pr-bless.txt"],
+    );
+    assert_eq!(adoption_file, "review bless work\n");
+    fixture.git_fails(
+        std::path::Path::new(remote),
+        ["show", "refs/heads/pr-bless-review:default-pr-bless.txt"],
+    );
+    let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
+    assert!(gh_args.contains("## Agent Commits\n- review PR bless work"));
+    assert!(gh_args.contains("## Changed Files\n- review-pr-bless.txt"));
+    assert!(gh_args.contains("AGD-Workspace: review"));
 }
 
 #[test]

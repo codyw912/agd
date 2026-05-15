@@ -56,6 +56,8 @@ pub enum Command {
         #[arg(long = "continue")]
         r#continue: bool,
         #[arg(long)]
+        workspace: Option<String>,
+        #[arg(long)]
         target: Option<String>,
         #[arg(long = "branch")]
         adoption_branch: Option<String>,
@@ -89,6 +91,8 @@ pub enum Command {
     },
     Bless {
         branch: Option<String>,
+        #[arg(long)]
+        workspace: Option<String>,
         #[arg(long)]
         preserve: bool,
         #[arg(long)]
