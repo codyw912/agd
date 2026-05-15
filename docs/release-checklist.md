@@ -14,6 +14,7 @@ Use this checklist before tagging an alpha release.
 - Run `just fmt-check`.
 - Run `just test`.
 - Run `just lint`.
+- Run `just package-check`.
 - Confirm GitHub Actions passes on the release PR.
 
 ## Smoke Test

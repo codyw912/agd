@@ -179,6 +179,7 @@ just fmt
 just fmt-check
 just test
 just lint
+just package-check
 ```
 
 For ad hoc Rust commands inside the project dev environment:
