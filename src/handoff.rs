@@ -1,5 +1,4 @@
 use crate::git;
-use crate::json_output;
 use crate::operation_lock::OperationLock;
 use crate::paths::AgdPaths;
 use crate::project::{Project, Workspace};
@@ -35,9 +34,10 @@ pub struct HandoffResult {
 pub fn handoff(
     paths: &AgdPaths,
     project: &Project,
+    workspace_id: Option<&str>,
     include_untracked: &[PathBuf],
 ) -> Result<HandoffResult> {
-    let workspace = json_output::default_workspace(project)?;
+    let workspace = find_workspace(project, workspace_id)?;
     require_clean(&workspace.path, "agent workspace")?;
     require_no_untracked_human_files(&project.human_checkout, include_untracked)?;
     let _lock = OperationLock::acquire(paths, &project.project_id, &workspace.id, "handoff")?;
@@ -76,6 +76,15 @@ pub fn handoff(
         tracked_files,
         untracked_files,
     })
+}
+
+fn find_workspace<'a>(project: &'a Project, workspace_id: Option<&str>) -> Result<&'a Workspace> {
+    let workspace_id = workspace_id.unwrap_or(&project.default_workspace);
+    project
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.id == workspace_id)
+        .with_context(|| format!("workspace not found: {workspace_id}"))
 }
 
 fn require_clean(repo: &Path, name: &str) -> Result<()> {
