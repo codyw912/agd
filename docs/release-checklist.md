@@ -6,7 +6,8 @@ Use this checklist before tagging an alpha release.
 
 - Confirm `Cargo.toml` has the intended release version.
 - Confirm `flake.nix` package metadata uses the same version.
-- Decide whether the tag is a final alpha version such as `v0.1.0` or a prerelease such as `v0.1.0-alpha.1`.
+- Confirm `CHANGELOG.md` has a release entry for the same version.
+- Confirm the release tag will be `v0.1.0`.
 - Confirm license files match the package license metadata.
 
 ## Verification
@@ -56,3 +57,18 @@ Confirm the smoke test opens a human-owned pull request and that the PR body inc
 
 - Create the release tag from `main` after the release PR is merged.
 - Push the tag only after CI passes on `main`.
+
+```bash
+git switch main
+git pull --ff-only
+git status --short
+git tag -a v0.1.0 -m "AGD v0.1.0"
+git push origin v0.1.0
+```
+
+After the tag is pushed, verify installation from the tag:
+
+```bash
+cargo install --git https://github.com/codyw912/agd.git --tag v0.1.0 --locked
+agd --help
+```
