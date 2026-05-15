@@ -7,6 +7,7 @@ Use this checklist before tagging an alpha release.
 - Confirm `Cargo.toml` has the intended release version.
 - Confirm `flake.nix` package metadata uses the same version.
 - Decide whether the tag is a final alpha version such as `v0.1.0` or a prerelease such as `v0.1.0-alpha.1`.
+- Confirm license files match the package license metadata.
 
 ## Verification
 

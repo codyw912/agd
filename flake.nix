@@ -66,13 +66,19 @@
         if cargoProject then
           {
             default = pkgs.rustPlatform.buildRustPackage {
-              pname = "app";
+              pname = "agd";
               version = "0.1.0";
               inherit src;
               cargoLock.lockFile = ./Cargo.lock;
               nativeBuildInputs = with pkgs; [ pkg-config ];
               buildInputs = with pkgs; [ openssl ]
                 ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ libiconv zlib ];
+              meta = {
+                description = "Agent Git Delegation";
+                homepage = "https://github.com/codyw912/agd";
+                license = with pkgs.lib.licenses; [ mit asl20 ];
+                mainProgram = "agd";
+              };
             };
           }
         else
