@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 description = "Agent Git Delegation"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/codyw912/agd"
+readme = "README.md"
 
 [dependencies]
 anyhow = "1.0"
