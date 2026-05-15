@@ -34,6 +34,7 @@ Confirm the smoke test opens a human-owned pull request and that the PR body inc
 
 ## Release Notes
 
+- Confirm `CHANGELOG.md` describes the release scope and known limitations.
 - Summarize the supported alpha workflow.
 - Call out that AGD separates Git authority but does not sandbox execution.
 - List known limitations and recovery commands that changed in the release.
