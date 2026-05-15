@@ -33,3 +33,16 @@ Severity: low
 Repeated: yes
 Candidate response: Document the sequencing in dogfooding notes, then watch whether this remains a manual annoyance. If it does, consider a dedicated `agd sync`/post-merge flow that updates the human checkout first and then refreshes managed workspaces in order.
 Status: observed
+
+## Observation: PR push can fail on SSH signing but recover cleanly
+
+Date: 2026-05-15
+Repo/context: AGD dogfooding in this repository while opening a blessed PR.
+Workflow: Run `agd pr --bless --target main --branch <human-branch> <agent-branch>` from the human checkout.
+Expected: AGD adopts the agent branch, pushes the human-owned branch, and opens a pull request.
+Actual friction: The adoption succeeded, but the push step failed when the SSH/1Password agent could not sign for GitHub. The command printed a large Git/backtrace error. Running `agd pr --continue` afterward recovered the operation and opened the pull request.
+Workaround: Retry with `agd pr --continue` once the SSH agent is available, or temporarily use a push URL/credential path that does not depend on the failing SSH signer.
+Severity: medium
+Repeated: yes
+Candidate response: Keep dogfooding the recovery flow. If this keeps recurring, improve the push-failure UX by suppressing noisy backtraces, making the `agd pr --continue` next step more prominent, and documenting credential/signing recovery paths.
+Status: observed
