@@ -133,10 +133,15 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Some(Command::Handoff { include_untracked }) => {
+        Some(Command::Handoff {
+            workspace,
+            include_untracked,
+        }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let result = handoff::handoff(&paths, context.project(), &include_untracked)?;
+            let workspace = selected_workspace(&context, workspace.as_deref());
+            let result =
+                handoff::handoff(&paths, context.project(), workspace, &include_untracked)?;
             if json {
                 json_output::print(&result)?;
             } else if result.status == "noop" {

@@ -31,6 +31,8 @@ pub enum Command {
         rebase: Option<Option<String>>,
     },
     Handoff {
+        #[arg(long)]
+        workspace: Option<String>,
         #[arg(long = "include-untracked")]
         include_untracked: Vec<PathBuf>,
     },
