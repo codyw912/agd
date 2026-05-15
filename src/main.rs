@@ -266,13 +266,8 @@ fn main() -> Result<()> {
         }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let result = cleanup::discard(
-                &paths,
-                context.project(),
-                &branch,
-                force,
-                workspace.as_deref(),
-            )?;
+            let workspace = selected_workspace(&context, workspace.as_deref());
+            let result = cleanup::discard(&paths, context.project(), &branch, force, workspace)?;
             if json {
                 json_output::print(&result)?;
             } else {
@@ -282,8 +277,8 @@ fn main() -> Result<()> {
         Some(Command::ResetWorkspace { force, workspace }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let result =
-                cleanup::reset_workspace(&paths, context.project(), force, workspace.as_deref())?;
+            let workspace = selected_workspace(&context, workspace.as_deref());
+            let result = cleanup::reset_workspace(&paths, context.project(), force, workspace)?;
             if json {
                 json_output::print(&result)?;
             } else {
