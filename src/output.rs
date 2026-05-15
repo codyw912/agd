@@ -1,10 +1,10 @@
 use crate::git;
-use crate::project::{Project, ProjectContext};
+use crate::project::{Project, ProjectContext, Workspace};
 use crate::status_report;
 use anyhow::Result;
 use std::path::Path;
 
-pub fn status(context: &ProjectContext, cwd: &Path) -> Result<()> {
+pub fn status(context: &ProjectContext, workspace_id: Option<&str>, cwd: &Path) -> Result<()> {
     let project = context.project();
     match context {
         ProjectContext::HumanCheckout(_) => println!("Mode: human checkout"),
@@ -13,11 +13,12 @@ pub fn status(context: &ProjectContext, cwd: &Path) -> Result<()> {
     println!("Project: {}", project.name);
     println!("Human checkout:");
     println!("  {}", project.human_checkout.display());
-    if let Some(workspace) = default_workspace(project) {
+    let workspace = find_workspace(project, workspace_id);
+    if let Some(workspace) = workspace {
         println!("Agent workspace:");
         println!("  {}", workspace.path.display());
     }
-    let agent_branches = status_report::agent_branches(project)?;
+    let agent_branches = status_report::agent_branches(project, workspace_id)?;
     if !agent_branches.is_empty() {
         println!("Pending agent branches:");
         for branch in agent_branches {
@@ -58,9 +59,10 @@ fn plural(count: usize, singular: &str, plural: &str) -> String {
     }
 }
 
-fn default_workspace(project: &Project) -> Option<&crate::project::Workspace> {
+fn find_workspace<'a>(project: &'a Project, workspace_id: Option<&str>) -> Option<&'a Workspace> {
+    let workspace_id = workspace_id.unwrap_or(&project.default_workspace);
     project
         .workspaces
         .iter()
-        .find(|workspace| workspace.id == project.default_workspace)
+        .find(|workspace| workspace.id == workspace_id)
 }

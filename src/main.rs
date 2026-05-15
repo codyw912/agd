@@ -69,13 +69,14 @@ fn main() -> Result<()> {
                 println!("{}", workspace.path.display());
             }
         }
-        Some(Command::Status) => {
+        Some(Command::Status { workspace }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
+            let workspace = selected_workspace(&context, workspace.as_deref());
             if json {
-                json_output::status(&context, &cwd)?;
+                json_output::status(&context, workspace, &cwd)?;
             } else {
-                output::status(&context, &cwd)?;
+                output::status(&context, workspace, &cwd)?;
             }
         }
         Some(Command::Identity) => {

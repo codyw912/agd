@@ -102,9 +102,9 @@ pub fn init(project: &Project, workspace: &Workspace) -> Result<()> {
     })
 }
 
-pub fn status(context: &ProjectContext, cwd: &Path) -> Result<()> {
+pub fn status(context: &ProjectContext, workspace_id: Option<&str>, cwd: &Path) -> Result<()> {
     let project = context.project();
-    let workspace = default_workspace(project)?;
+    let workspace = find_workspace(project, workspace_id)?;
     let current_branch = git::stdout(cwd, ["branch", "--show-current"])
         .ok()
         .map(|branch| branch.trim().to_string())
@@ -123,7 +123,7 @@ pub fn status(context: &ProjectContext, cwd: &Path) -> Result<()> {
             .as_ref()
             .map(upstream_remote_response),
         workspace: workspace_response(workspace),
-        agent_branches: status_report::agent_branches(project)?,
+        agent_branches: status_report::agent_branches(project, workspace_id)?,
         agent_identity: identity_response(&project.agent_identity),
         signing: "disabled",
         push: "denied",
@@ -165,11 +165,16 @@ pub fn print<T: Serialize>(value: &T) -> Result<()> {
 }
 
 pub fn default_workspace(project: &Project) -> Result<&Workspace> {
+    find_workspace(project, None)
+}
+
+fn find_workspace<'a>(project: &'a Project, workspace_id: Option<&str>) -> Result<&'a Workspace> {
+    let workspace_id = workspace_id.unwrap_or(&project.default_workspace);
     project
         .workspaces
         .iter()
-        .find(|workspace| workspace.id == project.default_workspace)
-        .context("default workspace not found")
+        .find(|workspace| workspace.id == workspace_id)
+        .with_context(|| format!("workspace not found: {workspace_id}"))
 }
 
 fn workspace_response(workspace: &Workspace) -> WorkspaceResponse {
