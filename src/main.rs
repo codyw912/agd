@@ -118,11 +118,12 @@ fn main() -> Result<()> {
                 doctor::doctor(&paths, &context, &cwd)?;
             }
         }
-        Some(Command::Sync { rebase }) => {
+        Some(Command::Sync { workspace, rebase }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
+            let workspace = selected_workspace(&context, workspace.as_deref());
             let rebase = resolve_sync_rebase(&context, &cwd, rebase)?;
-            let result = sync::sync(&paths, context.project(), rebase.as_deref())?;
+            let result = sync::sync(&paths, context.project(), workspace, rebase.as_deref())?;
             if json {
                 json_output::print(&result)?;
             } else {
@@ -147,7 +148,7 @@ fn main() -> Result<()> {
         Some(Command::Branches { workspace }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let workspace = review_workspace(&context, workspace.as_deref());
+            let workspace = selected_workspace(&context, workspace.as_deref());
             if json {
                 json_output::branches(review::branch_names(context.project(), workspace)?)?;
             } else {
@@ -157,7 +158,7 @@ fn main() -> Result<()> {
         Some(Command::Log { workspace, branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let workspace = review_workspace(&context, workspace.as_deref());
+            let workspace = selected_workspace(&context, workspace.as_deref());
             if json {
                 let log =
                     review::commit_log(context.project(), workspace, branch.as_deref(), &cwd)?;
@@ -169,7 +170,7 @@ fn main() -> Result<()> {
         Some(Command::Diff { workspace, branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let workspace = review_workspace(&context, workspace.as_deref());
+            let workspace = selected_workspace(&context, workspace.as_deref());
             if json {
                 let diff =
                     review::branch_diff(context.project(), workspace, branch.as_deref(), &cwd)?;
@@ -236,7 +237,7 @@ fn main() -> Result<()> {
         Some(Command::Files { workspace, branch }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            let workspace = review_workspace(&context, workspace.as_deref());
+            let workspace = selected_workspace(&context, workspace.as_deref());
             if json {
                 json_output::files(review::changed_files(
                     context.project(),
@@ -407,7 +408,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn review_workspace<'a>(
+fn selected_workspace<'a>(
     context: &'a project::ProjectContext,
     explicit: Option<&'a str>,
 ) -> Option<&'a str> {

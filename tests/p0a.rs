@@ -3396,6 +3396,88 @@ fn json_sync_outputs_updated_target() {
 }
 
 #[test]
+fn sync_targets_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+    let default_before = fixture.git_stdout(&default_workspace, ["rev-parse", "main"]);
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+    let human_head = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+
+    fixture
+        .agd()
+        .args(["sync", "--workspace", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Synced main"));
+
+    let default_after = fixture.git_stdout(&default_workspace, ["rev-parse", "main"]);
+    assert_eq!(default_after.trim(), default_before.trim());
+    let review_after = fixture.git_stdout(&review_workspace, ["rev-parse", "main"]);
+    assert_eq!(review_after.trim(), human_head.trim());
+}
+
+#[test]
+fn sync_defaults_to_current_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+    let default_before = fixture.git_stdout(&default_workspace, ["rev-parse", "main"]);
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+    let human_head = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+
+    fixture
+        .agd()
+        .arg("sync")
+        .current_dir(&review_workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Synced main"));
+
+    let default_after = fixture.git_stdout(&default_workspace, ["rev-parse", "main"]);
+    assert_eq!(default_after.trim(), default_before.trim());
+    let review_after = fixture.git_stdout(&review_workspace, ["rev-parse", "main"]);
+    assert_eq!(review_after.trim(), human_head.trim());
+}
+
+#[test]
 fn sync_does_not_touch_agent_branches() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -3523,6 +3605,68 @@ fn sync_rebases_selected_agent_branch_after_mirror_update() {
         fs::read_to_string(workspace.join("agent.txt")).expect("read agent work"),
         "agent work\n"
     );
+}
+
+#[test]
+fn sync_rebases_selected_named_workspace_branch() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let default_workspace = fixture.agd_path();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+    let default_before = fixture.git_stdout(&default_workspace, ["rev-parse", "main"]);
+
+    fixture.git_in(&review_workspace, ["switch", "-c", "agent/rebase-review"]);
+    fixture.write_file(&review_workspace, "agent.txt", "review agent work\n");
+    fixture.git_in(&review_workspace, ["add", "agent.txt"]);
+    fixture.git_in(&review_workspace, ["commit", "-m", "review agent work"]);
+    let agent_before = fixture.git_stdout(&review_workspace, ["rev-parse", "agent/rebase-review"]);
+    fixture.git_in(&review_workspace, ["switch", "main"]);
+
+    fixture.write_file(&fixture.human, "human.txt", "new human work\n");
+    fixture.git(["add", "human.txt"]);
+    fixture.git(["commit", "-m", "human update"]);
+    let human_head = fixture.git_stdout(&fixture.human, ["rev-parse", "main"]);
+
+    fixture
+        .agd()
+        .args([
+            "sync",
+            "--workspace",
+            "review",
+            "--rebase",
+            "agent/rebase-review",
+        ])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Synced main"))
+        .stdout(predicate::str::contains("Rebased agent/rebase-review"));
+
+    let default_after = fixture.git_stdout(&default_workspace, ["rev-parse", "main"]);
+    assert_eq!(default_after.trim(), default_before.trim());
+    let review_main = fixture.git_stdout(&review_workspace, ["rev-parse", "main"]);
+    assert_eq!(review_main.trim(), human_head.trim());
+    let agent_after = fixture.git_stdout(&review_workspace, ["rev-parse", "agent/rebase-review"]);
+    assert_ne!(agent_after.trim(), agent_before.trim());
+    let merge_base = fixture.git_stdout(
+        &review_workspace,
+        ["merge-base", human_head.trim(), agent_after.trim()],
+    );
+    assert_eq!(merge_base.trim(), human_head.trim());
 }
 
 #[test]
