@@ -51,7 +51,7 @@ agd files agent/refactor-auth
 ```
 
 For additional managed workspaces, pass `--workspace <id>` from the human checkout,
-or run review, sync, and handoff commands from inside that agent workspace to
+or run review, sync, handoff, and shell commands from inside that agent workspace to
 target it by default.
 
 After the human target branch moves, sync the workspace and rebase the current
@@ -122,7 +122,7 @@ agd pr [--workspace <id>] [branch]
 agd pr --bless [--workspace <id>] [--target <branch>] [--branch <name>] [branch]
 agd pr --continue
 agd verify <commit>
-agd shell
+agd shell [--workspace <id>]
 agd discard [--force] <branch>
 agd reset-workspace [--force]
 agd workspace list

@@ -734,6 +734,92 @@ fn shell_enters_default_workspace_with_agd_environment() {
 }
 
 #[test]
+fn shell_targets_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+    let capture = fixture._tmp.path().join("shell-review-capture.txt");
+    let fake_shell = fixture._tmp.path().join("fake-review-shell");
+    fs::write(
+        &fake_shell,
+        "#!/bin/sh\n{\nprintf 'pwd=%s\\n' \"$(pwd -P)\"\nprintf 'AGD_WORKSPACE_ID=%s\\n' \"$AGD_WORKSPACE_ID\"\n} > \"$AGD_TEST_SHELL_CAPTURE\"\n",
+    )
+    .expect("write fake shell");
+    make_executable(&fake_shell);
+
+    fixture
+        .agd()
+        .args(["shell", "--workspace", "review"])
+        .env("SHELL", &fake_shell)
+        .env("AGD_TEST_SHELL_CAPTURE", &capture)
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let output = fs::read_to_string(capture).expect("read shell capture");
+    let review_workspace = review_workspace.canonicalize().expect("canonical review");
+    assert!(output.contains(&format!("pwd={}\n", review_workspace.display())));
+    assert!(output.contains("AGD_WORKSPACE_ID=review\n"));
+}
+
+#[test]
+fn shell_defaults_to_current_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+    let capture = fixture._tmp.path().join("shell-current-review-capture.txt");
+    let fake_shell = fixture._tmp.path().join("fake-current-review-shell");
+    fs::write(
+        &fake_shell,
+        "#!/bin/sh\n{\nprintf 'pwd=%s\\n' \"$(pwd -P)\"\nprintf 'AGD_WORKSPACE_ID=%s\\n' \"$AGD_WORKSPACE_ID\"\n} > \"$AGD_TEST_SHELL_CAPTURE\"\n",
+    )
+    .expect("write fake shell");
+    make_executable(&fake_shell);
+
+    fixture
+        .agd()
+        .arg("shell")
+        .env("SHELL", &fake_shell)
+        .env("AGD_TEST_SHELL_CAPTURE", &capture)
+        .current_dir(&review_workspace)
+        .assert()
+        .success();
+
+    let output = fs::read_to_string(capture).expect("read shell capture");
+    let review_workspace = review_workspace.canonicalize().expect("canonical review");
+    assert!(output.contains(&format!("pwd={}\n", review_workspace.display())));
+    assert!(output.contains("AGD_WORKSPACE_ID=review\n"));
+}
+
+#[test]
 fn agent_workspace_blocks_commits_on_protected_branches() {
     let fixture = Fixture::new();
     fixture.init_human_repo();

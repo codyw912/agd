@@ -243,10 +243,11 @@ fn main() -> Result<()> {
                 verify::verify(context.project(), &commit)?;
             }
         }
-        Some(Command::Shell) => {
+        Some(Command::Shell { workspace }) => {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
-            shell_command::run(context.project())?;
+            let workspace = selected_workspace(&context, workspace.as_deref());
+            shell_command::run(context.project(), workspace)?;
         }
         Some(Command::Files { workspace, branch }) => {
             let cwd = std::env::current_dir()?;
