@@ -2,7 +2,7 @@ use crate::branch_policy;
 use crate::git;
 use crate::operation_lock::OperationLock;
 use crate::paths::AgdPaths;
-use crate::project::Project;
+use crate::project::{Project, Workspace};
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::ffi::OsString;
@@ -33,12 +33,13 @@ pub struct SyncRebase {
     pub after: String,
 }
 
-pub fn sync(paths: &AgdPaths, project: &Project, rebase: Option<&str>) -> Result<SyncResult> {
-    let workspace = project
-        .workspaces
-        .iter()
-        .find(|workspace| workspace.id == project.default_workspace)
-        .context("default workspace not found")?;
+pub fn sync(
+    paths: &AgdPaths,
+    project: &Project,
+    workspace_id: Option<&str>,
+    rebase: Option<&str>,
+) -> Result<SyncResult> {
+    let workspace = find_workspace(project, workspace_id)?;
     require_clean(&project.human_checkout, "human checkout")?;
     require_clean(&workspace.path, "agent workspace")?;
     if let Some(branch) = rebase {
@@ -73,6 +74,15 @@ pub fn sync(paths: &AgdPaths, project: &Project, rebase: Option<&str>) -> Result
         updates,
         rebase,
     })
+}
+
+fn find_workspace<'a>(project: &'a Project, workspace_id: Option<&str>) -> Result<&'a Workspace> {
+    let workspace_id = workspace_id.unwrap_or(&project.default_workspace);
+    project
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.id == workspace_id)
+        .with_context(|| format!("workspace not found: {workspace_id}"))
 }
 
 fn mirror_targets(project: &Project) -> Result<Vec<String>> {
