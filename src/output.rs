@@ -8,7 +8,7 @@ pub fn status(context: &ProjectContext, cwd: &Path) -> Result<()> {
     let project = context.project();
     match context {
         ProjectContext::HumanCheckout(_) => println!("Mode: human checkout"),
-        ProjectContext::AgentWorkspace(_) => println!("Mode: agent workspace"),
+        ProjectContext::AgentWorkspace { .. } => println!("Mode: agent workspace"),
     }
     println!("Project: {}", project.name);
     println!("Human checkout:");

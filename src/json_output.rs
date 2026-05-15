@@ -113,7 +113,7 @@ pub fn status(context: &ProjectContext, cwd: &Path) -> Result<()> {
     print(&StatusResponse {
         mode: match context {
             ProjectContext::HumanCheckout(_) => "human_checkout",
-            ProjectContext::AgentWorkspace(_) => "agent_workspace",
+            ProjectContext::AgentWorkspace { .. } => "agent_workspace",
         },
         project_id: project.project_id.clone(),
         project: project.name.clone(),
