@@ -145,6 +145,7 @@ This repo uses `just` as the shared command entry point:
 
 ```bash
 just fmt
+just fmt-check
 just test
 just lint
 ```
