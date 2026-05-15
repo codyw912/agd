@@ -55,14 +55,8 @@ fn main() -> Result<()> {
             let cwd = std::env::current_dir()?;
             let context = project::discover(&paths, &cwd)?;
             let project = context.project();
-            let workspace = match workspace.as_deref() {
-                Some(workspace) => project
-                    .workspaces
-                    .iter()
-                    .find(|candidate| candidate.id == workspace)
-                    .ok_or_else(|| anyhow::anyhow!("workspace not found: {workspace}"))?,
-                None => json_output::default_workspace(project)?,
-            };
+            let workspace = selected_workspace(&context, workspace.as_deref());
+            let workspace = find_workspace(project, workspace)?;
             if json {
                 json_output::path(workspace)?;
             } else {
@@ -434,6 +428,18 @@ fn selected_workspace<'a>(
     explicit: Option<&'a str>,
 ) -> Option<&'a str> {
     explicit.or_else(|| context.workspace_id())
+}
+
+fn find_workspace<'a>(
+    project: &'a project::Project,
+    workspace_id: Option<&str>,
+) -> Result<&'a project::Workspace> {
+    let workspace_id = workspace_id.unwrap_or(&project.default_workspace);
+    project
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.id == workspace_id)
+        .ok_or_else(|| anyhow::anyhow!("workspace not found: {workspace_id}"))
 }
 
 fn resolve_bless_branch(

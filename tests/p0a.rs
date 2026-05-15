@@ -519,6 +519,39 @@ fn init_creates_managed_clone_and_path_returns_it() {
 }
 
 #[test]
+fn path_defaults_to_current_named_workspace() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    fixture
+        .agd()
+        .args(["workspace", "create", "review"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let review_path = fixture.agd_json(["--json", "path", "--workspace", "review"], &fixture.human);
+    let review_workspace =
+        std::path::PathBuf::from(review_path["path"].as_str().expect("review path"));
+    let review_workspace_text = review_path["path"].as_str().expect("review path");
+
+    fixture
+        .agd()
+        .arg("path")
+        .current_dir(&review_workspace)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(review_workspace_text));
+
+    let path = fixture.agd_json(["--json", "path"], &review_workspace);
+    assert_eq!(path["path"], review_workspace_text);
+}
+
+#[test]
 fn agent_commit_uses_local_agent_identity_and_unsigned_commit() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
