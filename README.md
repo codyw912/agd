@@ -177,6 +177,7 @@ This repo uses `just` as the shared command entry point:
 ```bash
 just fmt
 just fmt-check
+just install-local
 just test
 just lint
 just package-check

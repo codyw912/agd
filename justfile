@@ -27,6 +27,9 @@ run *args:
 build:
   just --justfile "{{justfile()}}" dev cargo build
 
+install-local:
+  just --justfile "{{justfile()}}" dev-shell 'CARGO_HOME="$HOME/.cargo" CARGO_INSTALL_ROOT="$HOME/.cargo" cargo install --path . --locked --force'
+
 check:
   just --justfile "{{justfile()}}" dev cargo check
 
