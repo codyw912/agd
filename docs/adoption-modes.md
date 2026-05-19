@@ -8,6 +8,10 @@ The current alpha supports three adoption modes. They are useful in different
 review situations, and the defaults may change as AGD learns more from
 dogfooding.
 
+Current alpha adoption commits include AGD provenance trailers. See
+[Provenance](provenance.md) for current verification behavior and the
+local-provenance direction.
+
 ## Squash Adoption
 
 Squash adoption is the current default:

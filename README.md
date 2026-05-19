@@ -106,6 +106,9 @@ By default, `bless` creates a human-owned adoption branch from the configured ta
 See [Adoption Modes](docs/adoption-modes.md) for the current squash,
 preserve, and merge tradeoffs.
 
+See [Provenance](docs/provenance.md) for the current AGD trailer behavior and
+the local-provenance direction.
+
 To adopt and open the protected-branch PR in one step:
 
 ```bash
@@ -173,6 +176,10 @@ Most commands also support `--json` for machine-readable output.
 AGD separates authority, not execution.
 
 Agent work happens in a separate Git clone with a local agent identity and no access to your human signing key. The human approval boundary is explicit: review the branch, then bless it onto a human adoption branch, preserve it, merge it, or explicitly adopt it directly. AGD also blocks default pushes from the agent workspace and treats protected branch names such as `main`, `master`, `trunk`, `develop`, `release/*`, `stable/*`, `production/*`, and `prod/*` as non-agent branches.
+
+Current alpha adoption commits include AGD provenance trailers for verification.
+See [Provenance](docs/provenance.md) for current behavior and the local
+provenance direction.
 
 AGD does not sandbox filesystems, networks, credentials, or processes. Use separate sandboxing if you need those controls.
 
