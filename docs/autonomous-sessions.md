@@ -75,6 +75,9 @@ agd diff agent/refactor-auth
 agd files agent/refactor-auth
 ```
 
+See [Local Review](local-review.md) for the current branch review workflow and
+optional lazygit usage.
+
 Prefer adopting task branches while they are still reviewable:
 
 ```bash
