@@ -59,6 +59,10 @@ pub enum Command {
         #[arg(long = "continue")]
         r#continue: bool,
         #[arg(long)]
+        preserve: bool,
+        #[arg(long)]
+        merge: bool,
+        #[arg(long)]
         workspace: Option<String>,
         #[arg(long)]
         target: Option<String>,

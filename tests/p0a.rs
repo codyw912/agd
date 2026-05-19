@@ -3042,6 +3042,105 @@ fn pr_bless_creates_human_adoption_branch_and_invokes_gh() {
 }
 
 #[test]
+fn pr_bless_preserve_replays_commits_and_invokes_gh() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-preserve"]);
+    fixture.write_file(&workspace, "one.txt", "one\n");
+    fixture.git_in(&workspace, ["add", "one.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "preserve one"]);
+    fixture.write_file(&workspace, "two.txt", "two\n");
+    fixture.git_in(&workspace, ["add", "two.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "preserve two"]);
+
+    let gh_capture = fixture._tmp.path().join("gh-pr-preserve-args.txt");
+    let fake_path = fixture.fake_gh_path(&gh_capture);
+    fixture
+        .agd()
+        .args(["pr", "--bless", "--preserve", "agent/pr-preserve"])
+        .env("PATH", fake_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("https://example.test/pr/1"));
+
+    let history = fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["log", "--format=%B", "refs/heads/pr-preserve"],
+    );
+    assert!(history.contains("preserve one"));
+    assert!(history.contains("preserve two"));
+    assert_eq!(history.matches("AGD-Adoption: preserve").count(), 2);
+    let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
+    assert!(gh_args.contains("--head\npr-preserve\n"));
+    assert!(gh_args.contains("AGD-Adoption: preserve"));
+}
+
+#[test]
+fn pr_bless_merge_creates_merge_adoption_and_invokes_gh() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    let remote = fixture._tmp.path().join("origin.git");
+    let remote = remote.to_str().expect("remote path utf-8");
+    fixture.git(["init", "--bare", remote]);
+    fixture.git(["remote", "add", "origin", remote]);
+    fixture.git(["push", "-u", "origin", "main"]);
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/pr-merge"]);
+    fixture.write_file(&workspace, "merge.txt", "merge\n");
+    fixture.git_in(&workspace, ["add", "merge.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "merge work"]);
+
+    let gh_capture = fixture._tmp.path().join("gh-pr-merge-args.txt");
+    let fake_path = fixture.fake_gh_path(&gh_capture);
+    fixture
+        .agd()
+        .args(["pr", "--bless", "--merge", "agent/pr-merge"])
+        .env("PATH", fake_path)
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("https://example.test/pr/1"));
+
+    let merge_parents = fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["rev-list", "--parents", "-1", "refs/heads/pr-merge"],
+    );
+    assert_eq!(merge_parents.split_whitespace().count(), 3);
+    let merge_raw = fixture.git_stdout(
+        std::path::Path::new(remote),
+        ["cat-file", "-p", "refs/heads/pr-merge"],
+    );
+    assert!(merge_raw.contains("gpgsig "));
+    assert!(merge_raw.contains("AGD-Adoption: merge"));
+    let gh_args = fs::read_to_string(gh_capture).expect("read gh args");
+    assert!(gh_args.contains("--head\npr-merge\n"));
+    assert!(gh_args.contains("AGD-Adoption: merge"));
+}
+
+#[test]
 fn pr_bless_targets_named_workspace() {
     let fixture = Fixture::new();
     fixture.init_human_repo();
@@ -3423,7 +3522,27 @@ fn pr_target_options_require_bless() {
         .assert()
         .failure()
         .stderr(predicate::str::contains(
-            "pr --target and --branch require --bless",
+            "pr --target, --branch, --preserve, and --merge require --bless",
+        ));
+
+    fixture
+        .agd()
+        .args(["pr", "--preserve", "agent/pr-raw"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "pr --target, --branch, --preserve, and --merge require --bless",
+        ));
+
+    fixture
+        .agd()
+        .args(["pr", "--bless", "--preserve", "--merge", "agent/pr-raw"])
+        .current_dir(&fixture.human)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "choose only one bless adoption mode",
         ));
 }
 
