@@ -4,6 +4,18 @@ AGD `v0.1.0` proved the core Git authority model: agents can work in managed che
 
 The next phase is workflow discovery. The project should learn from real usage before adding more command surface or simplifying architecture around assumptions that may not hold.
 
+## Product Thesis
+
+AGD is a developer tool, not a project tool.
+
+The remote project should not need to understand AGD. A developer should be able
+to use AGD locally and still produce normal project history: human-authored
+commits, ordinary branch names, reviewable pull requests, and no mandatory
+AGD-specific metadata in remote history.
+
+AGD's job is to help a developer turn autonomous local agent history into
+ordinary, reviewable, human-owned Git history.
+
 ## Goals
 
 - Dogfood AGD on real work in this repository.
@@ -11,12 +23,14 @@ The next phase is workflow discovery. The project should learn from real usage b
 - Capture repeated friction before turning it into roadmap work.
 - Identify which workflows are central, which are edge cases, and which existing behavior can be removed or simplified later.
 - Preserve the human approval boundary as the product's core invariant.
+- Keep AGD-specific metadata local by default unless a project explicitly opts into AGD-native history.
 
 ## Non-Goals
 
 - Do not add new workflow flags just because they are easy to implement.
 - Do not start broad architecture refactors before workflow patterns are clearer.
 - Do not turn AGD into an agent harness.
+- Do not require remote repositories, pull requests, or reviewers to understand AGD.
 - Do not expand into sandboxing, credential brokering, remote orchestration, or transcript capture in this phase.
 
 ## Discovery Workflows
@@ -50,6 +64,66 @@ Review `docs/workflow-discovery.md` after several real sessions. Convert observa
 - **Architecture:** simplification that follows stable workflow concepts.
 - **Deferred:** valid idea, but not needed for the next usable release.
 - **Rejected:** no longer fits the product thesis.
+
+## Design Tracks
+
+These tracks should be explored through dogfooding before implementation.
+
+### Developer-Shaped History
+
+Agent commits are working history. Blessed history should become normal
+developer history.
+
+Explore how AGD should convert agent branches, commit ranges, and `agent/main`
+integration work into human-owned branches and pull requests that look ordinary
+on the remote.
+
+Open questions:
+
+- Should replay-and-sign become the default adoption mode?
+- How should AGD handle merge commits inside `agent/main`?
+- Is `agent/main` an adoption unit, or only an agent-side integration branch?
+- How should AGD help split a long agent session into reviewable human branches?
+
+### Local Provenance
+
+AGD needs provenance for verification and recovery, but that does not mean
+provenance belongs in remote commit messages by default.
+
+Explore a local provenance store that maps agent commits or ranges to human
+adoption commits, including patch hashes, workspace ids, adoption timestamps,
+and verification data.
+
+Committed provenance can remain an explicit AGD-native project option later.
+
+### Workflow UX
+
+Entering and navigating the managed workspace needs to become easier. The
+current `cd "$(agd path)"` flow works but is not memorable enough for repeated
+daily use.
+
+Explore:
+
+- making `agd shell` the recommended entry flow
+- creating `.agd/default` as a symlink to the managed workspace
+- improving `agd init` next-step output
+- adding shell integration or aliases
+- clarifying which local paths are AGD state versus project state
+
+### Local Review UI
+
+AGD may benefit from optional local UI support for branch/range carving and
+review. Lazygit is a promising companion because it already helps developers
+inspect local Git history without making the remote project AGD-aware.
+
+Explore whether documented lazygit workflows or optional custom commands can
+help with:
+
+- reviewing `agent/*` branches
+- comparing agent work against `main`
+- choosing commit ranges
+- carving human-owned branches from agent history
+- deciding whether a branch is ready to bless
 
 ## Parked Architecture Questions
 
