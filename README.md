@@ -52,6 +52,9 @@ For scripts or manual directory changes, `agd path` prints the workspace path:
 cd "$(agd path)"
 ```
 
+See [Workspace Discoverability](docs/workspace-discoverability.md) for the
+current entry points and the `.agd/default` symlink design direction.
+
 Run your agent or work normally from the managed workspace:
 
 ```bash
