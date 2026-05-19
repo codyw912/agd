@@ -81,6 +81,9 @@ agd diff agent/refactor-auth
 agd files agent/refactor-auth
 ```
 
+See [Local Review](docs/local-review.md) for the current review workflow and
+optional lazygit usage.
+
 For additional managed workspaces, pass `--workspace <id>` from the human checkout,
 or run path, status, review, sync, handoff, shell, and cleanup commands from
 inside that agent workspace to target it by default.
