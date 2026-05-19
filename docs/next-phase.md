@@ -110,6 +110,9 @@ Explore:
 - adding shell integration or aliases
 - clarifying which local paths are AGD state versus project state
 
+See [Workspace Discoverability](workspace-discoverability.md) for the current
+entry model and symlink decision points.
+
 ### Local Review UI
 
 AGD may benefit from optional local UI support for branch/range carving and
