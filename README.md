@@ -10,6 +10,9 @@ AGD is not an agent harness. Agents keep using normal Git commands inside a norm
 
 AGD is alpha software under active development. The core workflow is usable, but command behavior, metadata formats, and safety checks may still change as the project matures.
 
+See [Workflow Decisions](docs/workflow-decisions.md) for the current
+dogfooding-driven product direction.
+
 ## Installation
 
 AGD currently ships as a Rust CLI. Install it with Cargo:
