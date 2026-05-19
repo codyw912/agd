@@ -64,6 +64,9 @@ remote commit messages. It may include:
 With that shape, AGD can keep verification and recovery data locally while the
 remote project receives normal human-owned Git history.
 
+See [Local Provenance Design](local-provenance-design.md) for the proposed
+storage path, record schema, and migration plan.
+
 ## Committed Provenance As An Option
 
 Some projects may want provenance committed to history. Examples:
