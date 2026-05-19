@@ -69,6 +69,9 @@ git switch agent/main
 git merge --no-ff agent/refactor-auth
 ```
 
+See [Long-Running Autonomous Sessions](docs/autonomous-sessions.md) for the
+current dogfood workflow and its known review-size tradeoffs.
+
 Review from the human checkout:
 
 ```bash
