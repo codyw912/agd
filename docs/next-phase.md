@@ -65,6 +65,9 @@ Review `docs/workflow-discovery.md` after several real sessions. Convert observa
 - **Deferred:** valid idea, but not needed for the next usable release.
 - **Rejected:** no longer fits the product thesis.
 
+See [Workflow Decisions](workflow-decisions.md) for the current decision snapshot
+from dogfooding.
+
 ## Design Tracks
 
 These tracks should be explored through dogfooding before implementation.
