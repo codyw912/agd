@@ -40,13 +40,19 @@ Initialize AGD from your human checkout:
 agd init
 ```
 
-Move into the managed agent workspace:
+Enter the managed agent workspace:
+
+```bash
+agd shell
+```
+
+For scripts or manual directory changes, `agd path` prints the workspace path:
 
 ```bash
 cd "$(agd path)"
 ```
 
-Run your agent or work normally:
+Run your agent or work normally from the managed workspace:
 
 ```bash
 git switch -c agent/refactor-auth
