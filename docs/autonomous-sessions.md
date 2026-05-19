@@ -84,6 +84,9 @@ Prefer adopting task branches while they are still reviewable:
 agd pr --bless agent/refactor-auth
 ```
 
+See [Adoption Modes](adoption-modes.md) before choosing whether a task branch
+should be squashed, preserved, or merged.
+
 This keeps remote pull requests shaped like normal developer work. Waiting until
 the end and blessing all of `agent/main` can produce a very large adoption.
 
