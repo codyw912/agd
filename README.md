@@ -103,6 +103,9 @@ agd bless agent/refactor-auth
 
 By default, `bless` creates a human-owned adoption branch from the configured target branch. For example, `agent/refactor-auth` adopts onto `refactor-auth`, leaving `main` ready for a normal protected-branch PR. The integration branch `agent/main` adopts onto `adopt/main` by default so it does not collide with protected `main`. Use `--workspace <id>` to adopt from a named workspace, `--branch <name>` for project branch naming policies, `--target <branch>` for a non-default base branch, or `--direct` when you explicitly want to adopt onto the current human branch.
 
+See [Adoption Modes](docs/adoption-modes.md) for the current squash,
+preserve, and merge tradeoffs.
+
 To adopt and open the protected-branch PR in one step:
 
 ```bash

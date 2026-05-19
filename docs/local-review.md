@@ -40,6 +40,9 @@ agd diff agent/refactor-auth
 A branch is a good adoption candidate when it has a clear purpose, a reviewable
 diff, and a commit shape you would accept from a human developer.
 
+See [Adoption Modes](adoption-modes.md) before choosing whether to squash,
+preserve, or merge the branch.
+
 ## Use Lazygit Optionally
 
 AGD does not require lazygit, but it can make local review easier because the
