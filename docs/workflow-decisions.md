@@ -97,6 +97,9 @@ It should support:
 - interrupted operation recovery
 - optional export or committed provenance later
 
+See [Local Provenance Design](local-provenance-design.md) for the current
+implementation plan.
+
 ### 3. Reviewable Session Carving
 
 Long-running sessions need a way to turn agent work into PR-sized human
