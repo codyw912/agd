@@ -25,6 +25,14 @@ pub struct PullRequestResult {
     pub next_step: Option<String>,
 }
 
+pub struct BlessedPrOptions<'a> {
+    pub workspace_id: Option<&'a str>,
+    pub branch: Option<&'a str>,
+    pub mode: AdoptionMode,
+    pub target_branch: Option<String>,
+    pub adoption_branch: Option<String>,
+}
+
 pub fn open(
     project: &Project,
     workspace_id: Option<&str>,
@@ -69,22 +77,22 @@ pub fn open(
 pub fn open_blessed(
     paths: &AgdPaths,
     project: &Project,
-    workspace_id: Option<&str>,
-    branch: Option<&str>,
-    target_branch: Option<String>,
-    adoption_branch: Option<String>,
+    options: BlessedPrOptions<'_>,
     cwd: &Path,
 ) -> Result<PullRequestResult> {
-    let branch = resolve_branch(project, branch, cwd)?;
-    let target_branch = target_branch.unwrap_or_else(|| project.default_target.clone());
-    let adoption_branch =
-        adoption_branch.unwrap_or_else(|| adoption::derive_adoption_branch(&branch));
+    let branch = resolve_branch(project, options.branch, cwd)?;
+    let target_branch = options
+        .target_branch
+        .unwrap_or_else(|| project.default_target.clone());
+    let adoption_branch = options
+        .adoption_branch
+        .unwrap_or_else(|| adoption::derive_adoption_branch(&branch));
     let result = match adoption::bless(
         paths,
         project,
-        workspace_id,
+        options.workspace_id,
         &branch,
-        AdoptionMode::Squash,
+        options.mode,
         AdoptionTarget::Branch {
             target_branch: target_branch.clone(),
             adoption_branch,

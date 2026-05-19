@@ -184,6 +184,8 @@ fn main() -> Result<()> {
         Some(Command::Pr {
             bless,
             r#continue,
+            preserve,
+            merge,
             workspace,
             target,
             adoption_branch,
@@ -196,25 +198,40 @@ fn main() -> Result<()> {
                     || workspace.is_some()
                     || target.is_some()
                     || adoption_branch.is_some()
+                    || preserve
+                    || merge
                     || branch.is_some()
                 {
                     bail!("pr --continue cannot be combined with other pr options");
                 }
                 pull_request::continue_blessed(&paths, context.project())?
             } else if bless {
+                if preserve && merge {
+                    bail!("choose only one bless adoption mode");
+                }
+                let mode = if merge {
+                    adoption::AdoptionMode::Merge
+                } else if preserve {
+                    adoption::AdoptionMode::Preserve
+                } else {
+                    adoption::AdoptionMode::Squash
+                };
                 let workspace = selected_workspace(&context, workspace.as_deref());
                 pull_request::open_blessed(
                     &paths,
                     context.project(),
-                    workspace,
-                    branch.as_deref(),
-                    target,
-                    adoption_branch,
+                    pull_request::BlessedPrOptions {
+                        workspace_id: workspace,
+                        branch: branch.as_deref(),
+                        mode,
+                        target_branch: target,
+                        adoption_branch,
+                    },
                     &cwd,
                 )?
             } else {
-                if target.is_some() || adoption_branch.is_some() {
-                    bail!("pr --target and --branch require --bless");
+                if target.is_some() || adoption_branch.is_some() || preserve || merge {
+                    bail!("pr --target, --branch, --preserve, and --merge require --bless");
                 }
                 let workspace = selected_workspace(&context, workspace.as_deref());
                 pull_request::open(context.project(), workspace, branch.as_deref(), &cwd)?

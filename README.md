@@ -165,7 +165,7 @@ agd bless --direct [--workspace <id>] [--preserve | --merge] <branch>
 agd bless --continue
 agd bless --abort
 agd pr [--workspace <id>] [branch]
-agd pr --bless [--workspace <id>] [--target <branch>] [--branch <name>] [branch]
+agd pr --bless [--workspace <id>] [--preserve | --merge] [--target <branch>] [--branch <name>] [branch]
 agd pr --continue
 agd verify <commit>
 agd shell [--workspace <id>]
