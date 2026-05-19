@@ -49,6 +49,8 @@ fn main() -> Result<()> {
                 println!("  {}", project.human_checkout.display());
                 println!("Agent workspace:");
                 println!("  {}", workspace_path.display());
+                println!("Next step:");
+                println!("  agd shell");
             }
         }
         Some(Command::Path { workspace }) => {

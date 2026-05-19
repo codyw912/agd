@@ -358,7 +358,9 @@ fn init_writes_project_metadata_and_human_marker() {
         .current_dir(&fixture.human)
         .assert()
         .success()
-        .stdout(predicate::str::contains("Initialized AGD."));
+        .stdout(predicate::str::contains("Initialized AGD."))
+        .stdout(predicate::str::contains("Next step:"))
+        .stdout(predicate::str::contains("agd shell"));
 
     assert!(fixture.agd_home.join("projects").exists());
     assert!(fixture.human.join(".git/agd/project.json").exists());
