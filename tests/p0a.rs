@@ -78,6 +78,28 @@ impl Fixture {
             .to_string()
     }
 
+    fn local_provenance_record(&self, human_commit: &str) -> Value {
+        let path = self
+            .human
+            .join(".git/agd/provenance/records")
+            .join(format!("{human_commit}.json"));
+        let record = fs::read(&path).unwrap_or_else(|error| {
+            panic!("read local provenance record {}: {error}", path.display())
+        });
+        serde_json::from_slice(&record).expect("parse local provenance record")
+    }
+
+    fn local_provenance_index(&self, agent_tip: &str) -> Value {
+        let path = self
+            .human
+            .join(".git/agd/provenance/by-agent")
+            .join(format!("{agent_tip}.json"));
+        let index = fs::read(&path).unwrap_or_else(|error| {
+            panic!("read local provenance index {}: {error}", path.display())
+        });
+        serde_json::from_slice(&index).expect("parse local provenance index")
+    }
+
     fn lock_dir(&self) -> std::path::PathBuf {
         self.agd_home
             .join("projects")
@@ -1636,6 +1658,7 @@ fn bless_squashes_agent_branch_into_one_human_commit() {
     fixture.write_file(&workspace, "agent.txt", "two\n");
     fixture.git_in(&workspace, ["add", "agent.txt"]);
     fixture.git_in(&workspace, ["commit", "-m", "agent two"]);
+    let agent_tip = fixture.git_stdout(&workspace, ["rev-parse", "agent/refactor-auth"]);
 
     fixture
         .agd()
@@ -1649,6 +1672,23 @@ fn bless_squashes_agent_branch_into_one_human_commit() {
     assert!(subject.contains("Adopt agent/refactor-auth"));
     let body = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%B"]);
     assert!(body.contains("AGD-Agent-Branch: agent/refactor-auth"));
+    let human_commit = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+    let record = fixture.local_provenance_record(human_commit.trim());
+    assert_eq!(record["version"], 1);
+    assert_eq!(record["project_id"], fixture.project_id());
+    assert_eq!(record["workspace_id"], "default");
+    assert_eq!(record["agent_branch"], "agent/refactor-auth");
+    assert_eq!(record["agent_tip"], agent_tip.trim());
+    assert_eq!(record["agent_commit"], Value::Null);
+    assert_eq!(record["adoption"], "squash");
+    assert_eq!(record["human_branch"], "refactor-auth");
+    assert_eq!(record["human_commit"], human_commit.trim());
+    assert_eq!(
+        record["patch_sha256"].as_str().expect("patch hash").len(),
+        64
+    );
+    let index = fixture.local_provenance_index(agent_tip.trim());
+    assert_eq!(index["records"][0]["human_commit"], human_commit.trim());
     assert_eq!(
         fixture
             .git_stdout(&fixture.human, ["rev-list", "--count", "HEAD"])
@@ -1994,6 +2034,7 @@ fn bless_continue_commits_resolved_squash_conflict() {
     fixture.write_file(&workspace, "README.md", "agent change\n");
     fixture.git_in(&workspace, ["add", "README.md"]);
     fixture.git_in(&workspace, ["commit", "-m", "agent conflict"]);
+    let agent_tip = fixture.git_stdout(&workspace, ["rev-parse", "agent/conflict"]);
 
     fixture.write_file(&fixture.human, "README.md", "human change\n");
     fixture.git(["add", "README.md"]);
@@ -2027,6 +2068,12 @@ fn bless_continue_commits_resolved_squash_conflict() {
     let body = fixture.git_stdout(&fixture.human, ["log", "-1", "--format=%B"]);
     assert!(body.contains("AGD-Agent-Branch: agent/conflict"));
     assert!(body.contains("AGD-Adoption: squash"));
+    let human_commit = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+    let record = fixture.local_provenance_record(human_commit.trim());
+    assert_eq!(record["agent_branch"], "agent/conflict");
+    assert_eq!(record["agent_tip"], agent_tip.trim());
+    assert_eq!(record["adoption"], "squash");
+    assert_eq!(record["human_branch"], "conflict");
     let readme = fs::read_to_string(fixture.human.join("README.md")).expect("read README");
     assert_eq!(readme, "resolved change\n");
     assert!(!bless_state.exists());
@@ -2152,6 +2199,11 @@ fn bless_preserve_replays_agent_commits_with_human_signatures() {
     fixture.write_file(&workspace, "two.txt", "two\n");
     fixture.git_in(&workspace, ["add", "two.txt"]);
     fixture.git_in(&workspace, ["commit", "-m", "agent two"]);
+    let agent_tip = fixture.git_stdout(&workspace, ["rev-parse", "agent/refactor-auth"]);
+    let agent_commits = fixture.git_stdout(
+        &workspace,
+        ["rev-list", "--reverse", "main..agent/refactor-auth"],
+    );
 
     fixture
         .agd()
@@ -2191,10 +2243,18 @@ fn bless_preserve_replays_agent_commits_with_human_signatures() {
     );
 
     let commits = fixture.git_stdout(&fixture.human, ["rev-list", "-2", "HEAD"]);
-    for commit in commits.lines() {
+    for (commit, agent_commit) in commits.lines().rev().zip(agent_commits.lines()) {
         let raw = fixture.git_stdout(&fixture.human, ["cat-file", "-p", commit]);
         assert!(raw.contains("gpgsig "));
+        let record = fixture.local_provenance_record(commit);
+        assert_eq!(record["agent_branch"], "agent/refactor-auth");
+        assert_eq!(record["agent_tip"], agent_tip.trim());
+        assert_eq!(record["agent_commit"], agent_commit);
+        assert_eq!(record["adoption"], "preserve");
+        assert_eq!(record["human_branch"], "refactor-auth");
     }
+    let index = fixture.local_provenance_index(agent_tip.trim());
+    assert_eq!(index["records"].as_array().expect("records").len(), 2);
 }
 
 #[test]
@@ -2256,6 +2316,7 @@ fn bless_merge_creates_signed_merge_commit_and_preserves_agent_commits() {
     fixture.write_file(&workspace, "two.txt", "two\n");
     fixture.git_in(&workspace, ["add", "two.txt"]);
     fixture.git_in(&workspace, ["commit", "-m", "agent two"]);
+    let agent_tip = fixture.git_stdout(&workspace, ["rev-parse", "agent/refactor-auth"]);
 
     fixture
         .agd()
@@ -2278,6 +2339,13 @@ fn bless_merge_creates_signed_merge_commit_and_preserves_agent_commits() {
     assert!(merge_raw.contains("gpgsig "));
     assert!(merge_raw.contains("AGD-Adoption: merge"));
     assert!(merge_raw.contains("AGD-Agent-Branch: agent/refactor-auth"));
+    let human_commit = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+    let record = fixture.local_provenance_record(human_commit.trim());
+    assert_eq!(record["agent_branch"], "agent/refactor-auth");
+    assert_eq!(record["agent_tip"], agent_tip.trim());
+    assert_eq!(record["agent_commit"], Value::Null);
+    assert_eq!(record["adoption"], "merge");
+    assert_eq!(record["human_branch"], "refactor-auth");
 
     let agent_history = fixture.git_stdout(
         &fixture.human,

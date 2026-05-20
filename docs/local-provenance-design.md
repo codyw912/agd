@@ -109,14 +109,16 @@ adoption record while retrying remote publication.
 
 ## Migration Plan
 
-1. Write local records while keeping existing trailers unchanged.
+1. Write local records while keeping existing trailers unchanged. Implemented:
+   AGD writes records for squash, preserve, merge, and continued squash
+   adoption.
 2. Teach `agd verify` to read local records as a fallback.
 3. Add diagnostics in `agd doctor` for malformed local provenance.
 4. Add an explicit committed-provenance mode if needed.
 5. Consider making local-only provenance the default for adoption commits.
 
-The first implementation should stop after step 1 unless verification fallback
-is small enough to keep the PR reviewable.
+The first implementation stops after step 1; verification fallback should stay
+in a separate reviewable slice.
 
 ## Open Questions
 
