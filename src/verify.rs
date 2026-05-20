@@ -26,6 +26,13 @@ pub fn report(project: &Project, commit: &str) -> Result<VerifyReport> {
         ["log", "-1", "--format=%B", commit],
     )?;
     let trailers = parse_trailers(&message);
+    let trailers = if trailers.is_empty() {
+        provenance::read_local_record(&project.human_checkout, commit)?
+            .map(|record| record.trailers())
+            .unwrap_or_default()
+    } else {
+        trailers
+    };
     let missing: Vec<_> = REQUIRED_TRAILERS
         .iter()
         .copied()
