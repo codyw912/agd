@@ -1,9 +1,9 @@
 # Provenance
 
 AGD provenance links human-owned adoption history back to the agent work that
-produced it. Today, that provenance is stored in commit trailers. The likely
-future direction is local provenance by default, with committed provenance as an
-explicit project choice.
+produced it. Today, AGD writes local provenance records and still keeps commit
+trailers for verification compatibility. The likely future direction is local
+provenance by default, with committed provenance as an explicit project choice.
 
 ## Current Provenance
 
@@ -20,7 +20,15 @@ or commits. The trailers include:
 
 Preserve adoption also records `AGD-Agent-Commit` on each replayed commit.
 
-These trailers make the current `agd verify` command possible:
+AGD also writes local records under `.git/agd/provenance/`:
+
+- `records/<human-commit>.json`
+- `by-agent/<agent-tip>.json`
+
+These files are local to the developer checkout and are not committed to the
+project repository.
+
+The trailers make the current `agd verify` command possible:
 
 ```bash
 agd verify <commit>
@@ -47,8 +55,8 @@ Those goals point toward local provenance by default.
 
 ## Local Provenance Direction
 
-A future local provenance store should record adoption facts outside normal
-remote commit messages. It may include:
+The local provenance store records adoption facts outside normal remote commit
+messages. It includes:
 
 - project id
 - workspace id
