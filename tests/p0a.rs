@@ -100,6 +100,31 @@ impl Fixture {
         serde_json::from_slice(&index).expect("parse local provenance index")
     }
 
+    fn write_local_provenance_record(&self, human_commit: &str, record: &Value) {
+        let record_dir = self
+            .git_stdout(
+                &self.human,
+                ["rev-parse", "--git-path", "agd/provenance/records"],
+            )
+            .trim()
+            .to_string();
+        let record_dir = std::path::PathBuf::from(record_dir);
+        let record_dir = if record_dir.is_absolute() {
+            record_dir
+        } else {
+            self.human.join(record_dir)
+        };
+        fs::create_dir_all(&record_dir).expect("create local provenance records dir");
+        let path = record_dir.join(format!("{human_commit}.json"));
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(record).expect("serialize record"),
+        )
+        .unwrap_or_else(|error| {
+            panic!("write local provenance record {}: {error}", path.display())
+        });
+    }
+
     fn lock_dir(&self) -> std::path::PathBuf {
         self.agd_home
             .join("projects")
@@ -1815,6 +1840,122 @@ fn verify_accepts_current_squash_adoption_commit() {
             .len(),
         64
     );
+}
+
+#[test]
+fn verify_accepts_local_provenance_record_without_agd_trailers() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/local-verify"]);
+    fixture.write_file(&workspace, "verify.txt", "verify me\n");
+    fixture.git_in(&workspace, ["add", "verify.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "verify me"]);
+
+    let base = fixture.git_stdout(&workspace, ["rev-parse", "main"]);
+    let tip = fixture.git_stdout(&workspace, ["rev-parse", "agent/local-verify"]);
+    let workspace_path = workspace.to_str().expect("workspace path");
+    fixture.git_in(
+        &fixture.human,
+        [
+            "fetch",
+            workspace_path,
+            "refs/heads/agent/local-verify:refs/agd/agent/agent/local-verify",
+        ],
+    );
+    let patch = fixture.git_stdout_bytes(
+        &fixture.human,
+        [
+            "diff",
+            "--binary",
+            "--full-index",
+            "--no-ext-diff",
+            base.trim(),
+            tip.trim(),
+        ],
+    );
+    let patch_hash = sha256_hex(&patch);
+
+    fixture.write_file(&fixture.human, "verify.txt", "verify me\n");
+    fixture.git(["add", "verify.txt"]);
+    fixture.git(["commit", "-m", "human verify"]);
+    let human_commit = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+    fixture.write_local_provenance_record(
+        human_commit.trim(),
+        &serde_json::json!({
+            "version": 1,
+            "project_id": fixture.project_id(),
+            "workspace_id": "default",
+            "agent_branch": "agent/local-verify",
+            "agent_base": base.trim(),
+            "agent_tip": tip.trim(),
+            "agent_commit": null,
+            "adoption": "squash",
+            "human_branch": "local-verify",
+            "human_commit": human_commit.trim(),
+            "patch_sha256": patch_hash,
+            "created_at": "2026-05-20T00:00:00Z"
+        }),
+    );
+
+    fixture
+        .agd()
+        .args(["verify", "HEAD"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("verified AGD patch"));
+
+    let report = fixture.agd_json(["--json", "verify", "HEAD"], &fixture.human);
+    assert_eq!(report["status"], "verified");
+    assert_eq!(report["trailers"]["AGD-Agent-Branch"], "agent/local-verify");
+    assert_eq!(report["trailers"]["AGD-Patch-SHA256"], patch_hash);
+}
+
+#[test]
+fn verify_prefers_trailers_when_local_provenance_disagrees() {
+    let fixture = Fixture::new();
+    fixture.init_human_repo();
+    fixture.configure_fake_human_signer();
+    fixture
+        .agd()
+        .arg("init")
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+    let workspace = fixture.agd_path();
+
+    fixture.git_in(&workspace, ["switch", "-c", "agent/verify"]);
+    fixture.write_file(&workspace, "verify.txt", "verify me\n");
+    fixture.git_in(&workspace, ["add", "verify.txt"]);
+    fixture.git_in(&workspace, ["commit", "-m", "verify me"]);
+
+    fixture
+        .agd()
+        .args(["bless", "agent/verify"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success();
+
+    let human_commit = fixture.git_stdout(&fixture.human, ["rev-parse", "HEAD"]);
+    let mut record = fixture.local_provenance_record(human_commit.trim());
+    record["patch_sha256"] = Value::String("0".repeat(64));
+    fixture.write_local_provenance_record(human_commit.trim(), &record);
+
+    fixture
+        .agd()
+        .args(["verify", "HEAD"])
+        .current_dir(&fixture.human)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("verified AGD patch"));
 }
 
 #[test]

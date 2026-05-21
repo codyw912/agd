@@ -28,7 +28,8 @@ AGD also writes local records under `.git/agd/provenance/`:
 These files are local to the developer checkout and are not committed to the
 project repository.
 
-The trailers make the current `agd verify` command possible:
+The current `agd verify` command reads trailers first. If a commit has no AGD
+trailers, it falls back to the local record for that commit:
 
 ```bash
 agd verify <commit>
@@ -36,7 +37,8 @@ agd verify <commit>
 
 Verification recomputes the adopted patch and compares it to the recorded patch
 hash. This proves the human adoption commit matches the agent patch AGD recorded
-at adoption time.
+at adoption time. During migration, trailers remain authoritative when both
+trailers and local records exist.
 
 ## Why This Is Not The End State
 

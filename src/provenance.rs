@@ -109,6 +109,39 @@ pub fn write_local_record(repo: &Path, record: &LocalProvenanceRecord) -> Result
     update_agent_index(repo, record)
 }
 
+pub fn read_local_record(repo: &Path, commit: &str) -> Result<Option<LocalProvenanceRecord>> {
+    let commit = git::stdout(repo, ["rev-parse", commit])?;
+    let record_path = provenance_dir(repo)?
+        .join("records")
+        .join(format!("{}.json", commit.trim()));
+    let contents = match fs::read(&record_path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error).with_context(|| format!("read {}", record_path.display())),
+    };
+    serde_json::from_slice(&contents)
+        .with_context(|| format!("parse {}", record_path.display()))
+        .map(Some)
+}
+
+impl LocalProvenanceRecord {
+    pub fn trailers(&self) -> std::collections::BTreeMap<String, String> {
+        let mut trailers = std::collections::BTreeMap::from([
+            ("AGD-Project".to_string(), self.project_id.clone()),
+            ("AGD-Workspace".to_string(), self.workspace_id.clone()),
+            ("AGD-Agent-Branch".to_string(), self.agent_branch.clone()),
+            ("AGD-Agent-Base".to_string(), self.agent_base.clone()),
+            ("AGD-Agent-Tip".to_string(), self.agent_tip.clone()),
+            ("AGD-Adoption".to_string(), self.adoption.clone()),
+            ("AGD-Patch-SHA256".to_string(), self.patch_sha256.clone()),
+        ]);
+        if let Some(agent_commit) = &self.agent_commit {
+            trailers.insert("AGD-Agent-Commit".to_string(), agent_commit.clone());
+        }
+        trailers
+    }
+}
+
 fn update_agent_index(repo: &Path, record: &LocalProvenanceRecord) -> Result<()> {
     let index_dir = provenance_dir(repo)?.join("by-agent");
     fs::create_dir_all(&index_dir).with_context(|| format!("create {}", index_dir.display()))?;
@@ -145,12 +178,12 @@ fn update_agent_index(repo: &Path, record: &LocalProvenanceRecord) -> Result<()>
 }
 
 fn provenance_dir(repo: &Path) -> Result<PathBuf> {
-    Ok(git_dir(repo)?.join("agd/provenance"))
+    git_path(repo, "agd/provenance")
 }
 
-fn git_dir(repo: &Path) -> Result<PathBuf> {
-    let git_dir = git::stdout(repo, ["rev-parse", "--git-dir"])?;
-    let path = PathBuf::from(git_dir.trim());
+fn git_path(repo: &Path, path: &str) -> Result<PathBuf> {
+    let path = git::stdout(repo, ["rev-parse", "--git-path", path])?;
+    let path = PathBuf::from(path.trim());
     if path.is_absolute() {
         Ok(path)
     } else {
